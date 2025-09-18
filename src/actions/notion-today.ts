@@ -42,6 +42,7 @@ interface NotionTask {
   id: string;
   title: string;
   priority?: string;
+  due?: string;
   url?: string;
 }
 
@@ -376,9 +377,9 @@ class NotionClient {
 
       const data = (await res.json()) as NotionQueryResponse;
       const tasks = (data.results ?? [])
-        .map(page => extractTask(page, settings.priorityProp))
+        .map(page => extractTask(page, settings.priorityProp, settings.dateProp))
         .filter((task): task is NotionTask => Boolean(task));
-      return { tasks };
+      return { tasks: sortTasks(tasks) };
     } catch (error) {
       return { tasks: [], error: error instanceof Error ? error.message : String(error) };
     }
@@ -406,6 +407,7 @@ type NotionQueryResponse = {
         status?: { name?: string } | null;
         select?: { name?: string } | null;
         multi_select?: Array<{ name?: string }>;
+        date?: { start?: string | null; end?: string | null } | null;
       }
     >;
   }>;
@@ -441,14 +443,17 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
 function extractTask(
   page: { id: string; url?: string; properties: NotionQueryResponse["results"][number]["properties"] },
   priorityPropertyName: string,
+  datePropertyName: string,
 ): NotionTask | undefined {
   const titleProperty = Object.values(page.properties).find(prop => prop.type === "title");
   const title = titleProperty?.title?.map(piece => piece.plain_text).join("") ?? "(untitled)";
   const priority = extractPriorityValue(page.properties[priorityPropertyName]);
+  const due = extractDateValue(page.properties[datePropertyName]);
   return {
     id: page.id,
     title,
     priority,
+    due,
     url: page.url,
   };
 }
@@ -472,6 +477,16 @@ function extractPriorityValue(
     default:
       return undefined;
   }
+}
+
+function extractDateValue(
+  prop: NotionQueryResponse["results"][number]["properties"][string] | undefined,
+): string | undefined {
+  if (!prop || prop.type !== "date") return undefined;
+  const value = prop.date?.start ?? undefined;
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function formatTaskTitle(title: string): string {
@@ -587,6 +602,23 @@ const PRIORITY_ALIASES: Record<string, string> = {
   "fourth-priority": "4th-priority",
   "fifth-priority": "5th-priority",
 };
+
+const PRIORITY_SEQUENCE = [
+  "remember",
+  "quick-task",
+  "1st-priority",
+  "2nd-priority",
+  "3rd-priority",
+  "4th-priority",
+  "5th-priority",
+  "errand",
+  "meetings",
+] as const;
+
+const PRIORITY_ORDER = PRIORITY_SEQUENCE.reduce<Record<string, number>>((acc, key, index) => {
+  acc[key] = index;
+  return acc;
+}, {});
 
 const PRIORITY_STYLE_MAP: Record<string, KeyVisualDescriptor> = {
   remember: {
@@ -718,6 +750,45 @@ function getTaskVisual(priority?: string): KeyVisualDescriptor {
 
 function normalizePriorityKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function prioritySortIndex(priority?: string): number {
+  if (!priority) {
+    return PRIORITY_SEQUENCE.length + 1;
+  }
+  const normalizedKey = normalizePriorityKey(priority);
+  if (!normalizedKey) {
+    return PRIORITY_SEQUENCE.length + 1;
+  }
+  const mappedKey = PRIORITY_ALIASES[normalizedKey] ?? normalizedKey;
+  const index = PRIORITY_ORDER[mappedKey];
+  if (index !== undefined) {
+    return index;
+  }
+  return PRIORITY_SEQUENCE.length + 1;
+}
+
+function sortTasks(tasks: NotionTask[]): NotionTask[] {
+  return tasks.slice().sort((a, b) => {
+    const dueCompare = compareDateStrings(a.due, b.due);
+    if (dueCompare !== 0) {
+      return dueCompare;
+    }
+
+    const priorityCompare = prioritySortIndex(a.priority) - prioritySortIndex(b.priority);
+    if (priorityCompare !== 0) {
+      return priorityCompare;
+    }
+
+    return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+  });
+}
+
+function compareDateStrings(a?: string, b?: string): number {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  return a.localeCompare(b);
 }
 
 function buildKeyImage(descriptor: KeyVisualDescriptor, position: number | undefined, lines: string[]): string {
