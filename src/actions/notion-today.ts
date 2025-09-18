@@ -14,6 +14,7 @@ import type { KeyAction } from "@elgato/streamdeck";
 const DEFAULT_STATUS_PROPERTY = "Status";
 const DEFAULT_DONE_VALUE = "Done";
 const DEFAULT_DATE_PROPERTY = "Due";
+const DEFAULT_PRIORITY_PROPERTY = "Priority";
 const TITLE_MAX_LINES = 3;
 const TITLE_MAX_CHARS = 14;
 
@@ -23,6 +24,7 @@ export type NotionSettings = {
   statusProp?: string;
   doneValue?: string;
   dateProp?: string;
+  priorityProp?: string;
   position?: number | string;
 };
 
@@ -32,14 +34,29 @@ interface NormalizedSettings {
   statusProp: string;
   doneValue: string;
   dateProp: string;
+  priorityProp: string;
   position?: number;
 }
 
 interface NotionTask {
   id: string;
   title: string;
+  priority?: string;
   url?: string;
 }
+
+type KeyVisualDescriptor = {
+  id: string;
+  start: string;
+  end: string;
+  label: string;
+  labelColor: string;
+  border: string;
+  accent: string;
+  badgeBg: string;
+  badgeColor: string;
+  titleColor: string;
+};
 
 interface ContextState {
   id: string;
@@ -207,25 +224,25 @@ class TaskCoordinator {
   private async paint(state: ContextState, task?: NotionTask): Promise<void> {
     state.currentTask = task;
 
-    let visual: KeyVisualState = "task";
+    let descriptor: KeyVisualDescriptor;
     let title: string;
 
     if (!state.normalized.token || !state.normalized.db) {
-      visual = "setup";
+      descriptor = BASE_VISUALS.setup;
       title = wrapText("Configure Notion");
     } else if (this.lastError) {
-      visual = "error";
+      descriptor = BASE_VISUALS.error;
       title = wrapText(`Error ${this.lastError}`);
     } else if (!task) {
-      visual = "empty";
+      descriptor = BASE_VISUALS.empty;
       title = wrapText("No tasks for today");
     } else {
-      visual = "task";
+      descriptor = getTaskVisual(task.priority);
       title = formatTaskTitle(task.title);
     }
 
     const lines = title.split("\n").filter(line => line.trim().length > 0);
-    await state.action.setImage(buildKeyImage(visual, state.normalized.position, lines));
+    await state.action.setImage(buildKeyImage(descriptor, state.normalized.position, lines));
     await state.action.setTitle(undefined);
   }
 
@@ -235,7 +252,7 @@ class TaskCoordinator {
     const { normalized } = configured;
     return {
       ...normalized,
-      cacheKey: `${normalized.token}|${normalized.db}|${normalized.statusProp}|${normalized.doneValue}|${normalized.dateProp}`,
+      cacheKey: `${normalized.token}|${normalized.db}|${normalized.statusProp}|${normalized.doneValue}|${normalized.dateProp}|${normalized.priorityProp}`,
     };
   }
 
@@ -358,7 +375,9 @@ class NotionClient {
       }
 
       const data = (await res.json()) as NotionQueryResponse;
-      const tasks = (data.results ?? []).map(extractTaskTitle).filter(Boolean) as NotionTask[];
+      const tasks = (data.results ?? [])
+        .map(page => extractTask(page, settings.priorityProp))
+        .filter((task): task is NotionTask => Boolean(task));
       return { tasks };
     } catch (error) {
       return { tasks: [], error: error instanceof Error ? error.message : String(error) };
@@ -378,7 +397,17 @@ type NotionQueryResponse = {
   results: Array<{
     id: string;
     url?: string;
-    properties: Record<string, { type: string; title?: Array<{ plain_text: string }>; rich_text?: Array<{ plain_text: string }>; status?: { name?: string } }>;
+    properties: Record<
+      string,
+      {
+        type: string;
+        title?: Array<{ plain_text: string }>;
+        rich_text?: Array<{ plain_text: string }>;
+        status?: { name?: string } | null;
+        select?: { name?: string } | null;
+        multi_select?: Array<{ name?: string }>;
+      }
+    >;
   }>;
 };
 
@@ -404,18 +433,45 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
     statusProp: trim(settings.statusProp) ?? DEFAULT_STATUS_PROPERTY,
     doneValue: trim(settings.doneValue) ?? DEFAULT_DONE_VALUE,
     dateProp: trim(settings.dateProp) ?? DEFAULT_DATE_PROPERTY,
+    priorityProp: trim(settings.priorityProp) ?? DEFAULT_PRIORITY_PROPERTY,
     position: parsePosition(settings.position),
   };
 }
 
-function extractTaskTitle(page: { id: string; url?: string; properties: NotionQueryResponse["results"][number]["properties"] }): NotionTask | undefined {
+function extractTask(
+  page: { id: string; url?: string; properties: NotionQueryResponse["results"][number]["properties"] },
+  priorityPropertyName: string,
+): NotionTask | undefined {
   const titleProperty = Object.values(page.properties).find(prop => prop.type === "title");
   const title = titleProperty?.title?.map(piece => piece.plain_text).join("") ?? "(untitled)";
+  const priority = extractPriorityValue(page.properties[priorityPropertyName]);
   return {
     id: page.id,
     title,
+    priority,
     url: page.url,
   };
+}
+
+function extractPriorityValue(
+  prop: NotionQueryResponse["results"][number]["properties"][string] | undefined,
+): string | undefined {
+  if (!prop) return undefined;
+  switch (prop.type) {
+    case "status":
+      return prop.status?.name?.trim() || undefined;
+    case "select":
+      return prop.select?.name?.trim() || undefined;
+    case "multi_select":
+      return prop.multi_select?.[0]?.name?.trim() || undefined;
+    case "rich_text": {
+      const text = prop.rich_text?.map(piece => piece.plain_text).join("") ?? "";
+      const trimmed = text.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    }
+    default:
+      return undefined;
+  }
 }
 
 function formatTaskTitle(title: string): string {
@@ -473,69 +529,201 @@ function truncateLine(value: string, maxChars: number): string {
   return `${value.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
 }
 
-type KeyVisualState = "task" | "empty" | "error" | "setup";
+const BASE_VISUALS: Record<"task" | "empty" | "error" | "setup", KeyVisualDescriptor> = {
+  task: {
+    id: "task-default",
+    start: "#fdf2f8",
+    end: "#e0f2fe",
+    label: "Today",
+    labelColor: "#334155",
+    border: "#fbcfe8",
+    accent: "#dbeafe",
+    badgeBg: "#f472b6",
+    badgeColor: "#831843",
+    titleColor: "#1f2937",
+  },
+  empty: {
+    id: "empty",
+    start: "#f5f5f4",
+    end: "#e5e7eb",
+    label: "Today",
+    labelColor: "#57534e",
+    border: "#d6d3d1",
+    accent: "#e7e5e4",
+    badgeBg: "#c8c5c0",
+    badgeColor: "#3f3f46",
+    titleColor: "#44403c",
+  },
+  error: {
+    id: "error",
+    start: "#fef3c7",
+    end: "#fee2e2",
+    label: "Check",
+    labelColor: "#b91c1c",
+    border: "#fed7aa",
+    accent: "#fde68a",
+    badgeBg: "#fca5a5",
+    badgeColor: "#7f1d1d",
+    titleColor: "#7c2d12",
+  },
+  setup: {
+    id: "setup",
+    start: "#ede9fe",
+    end: "#cffafe",
+    label: "Notion",
+    labelColor: "#4338ca",
+    border: "#c7d2fe",
+    accent: "#e0e7ff",
+    badgeBg: "#a5b4fc",
+    badgeColor: "#312e81",
+    titleColor: "#312e81",
+  },
+};
 
-function buildKeyImage(style: KeyVisualState, position: number | undefined, lines: string[]): string {
-  const palette: Record<KeyVisualState, {
-    start: string;
-    end: string;
-    label: string;
-    labelColor: string;
-    border: string;
-    accent: string;
-    badgeBg: string;
-    badgeColor: string;
-    titleColor: string;
-  }> = {
-    task: {
-      start: "#fdf2f8",
-      end: "#e0f2fe",
-      label: "Today",
-      labelColor: "#334155",
-      border: "#fbcfe8",
-      accent: "#dbeafe",
-      badgeBg: "#f472b6",
-      badgeColor: "#831843",
-      titleColor: "#1f2937",
-    },
-    empty: {
-      start: "#f5f5f4",
-      end: "#e5e7eb",
-      label: "Today",
-      labelColor: "#57534e",
-      border: "#d6d3d1",
-      accent: "#e7e5e4",
-      badgeBg: "#c8c5c0",
-      badgeColor: "#3f3f46",
-      titleColor: "#44403c",
-    },
-    error: {
-      start: "#fef3c7",
-      end: "#fee2e2",
-      label: "Check",
-      labelColor: "#b91c1c",
-      border: "#fed7aa",
-      accent: "#fde68a",
-      badgeBg: "#fca5a5",
-      badgeColor: "#7f1d1d",
-      titleColor: "#7c2d12",
-    },
-    setup: {
-      start: "#ede9fe",
-      end: "#cffafe",
-      label: "Notion",
-      labelColor: "#4338ca",
-      border: "#c7d2fe",
-      accent: "#e0e7ff",
-      badgeBg: "#a5b4fc",
-      badgeColor: "#312e81",
-      titleColor: "#312e81",
-    },
-  };
+const PRIORITY_ALIASES: Record<string, string> = {
+  "first-priority": "1st-priority",
+  "second-priority": "2nd-priority",
+  "third-priority": "3rd-priority",
+  "fourth-priority": "4th-priority",
+  "fifth-priority": "5th-priority",
+};
 
+const PRIORITY_STYLE_MAP: Record<string, KeyVisualDescriptor> = {
+  remember: {
+    id: "priority-remember",
+    start: "#fde2e4",
+    end: "#fbcfe8",
+    label: "Remember",
+    labelColor: "#9d174d",
+    border: "#f9a8d4",
+    accent: "#fcd8e1",
+    badgeBg: "#f472b6",
+    badgeColor: "#831843",
+    titleColor: "#9d174d",
+  },
+  "quick-task": {
+    id: "priority-quick-task",
+    start: "#ccfbf1",
+    end: "#a5f3fc",
+    label: "Quick Task",
+    labelColor: "#0f766e",
+    border: "#99f6e4",
+    accent: "#99f6e4",
+    badgeBg: "#2dd4bf",
+    badgeColor: "#115e59",
+    titleColor: "#0f172a",
+  },
+  "1st-priority": {
+    id: "priority-1st",
+    start: "#fee2e2",
+    end: "#fecaca",
+    label: "1st Priority",
+    labelColor: "#b91c1c",
+    border: "#fca5a5",
+    accent: "#fecaca",
+    badgeBg: "#ef4444",
+    badgeColor: "#7f1d1d",
+    titleColor: "#7f1d1d",
+  },
+  "2nd-priority": {
+    id: "priority-2nd",
+    start: "#ffedd5",
+    end: "#fed7aa",
+    label: "2nd Priority",
+    labelColor: "#c2410c",
+    border: "#fdba74",
+    accent: "#fed7aa",
+    badgeBg: "#fb923c",
+    badgeColor: "#7c2d12",
+    titleColor: "#9a3412",
+  },
+  "3rd-priority": {
+    id: "priority-3rd",
+    start: "#fefce8",
+    end: "#fde68a",
+    label: "3rd Priority",
+    labelColor: "#a16207",
+    border: "#fcd34d",
+    accent: "#fef3c7",
+    badgeBg: "#f59e0b",
+    badgeColor: "#92400e",
+    titleColor: "#854d0e",
+  },
+  "4th-priority": {
+    id: "priority-4th",
+    start: "#ecfccb",
+    end: "#d9f99d",
+    label: "4th Priority",
+    labelColor: "#3f6212",
+    border: "#bbf7d0",
+    accent: "#dcfce7",
+    badgeBg: "#84cc16",
+    badgeColor: "#365314",
+    titleColor: "#3f6212",
+  },
+  "5th-priority": {
+    id: "priority-5th",
+    start: "#e0f2fe",
+    end: "#bfdbfe",
+    label: "5th Priority",
+    labelColor: "#1d4ed8",
+    border: "#93c5fd",
+    accent: "#bfdbfe",
+    badgeBg: "#3b82f6",
+    badgeColor: "#1e3a8a",
+    titleColor: "#1e40af",
+  },
+  errand: {
+    id: "priority-errand",
+    start: "#fef6f0",
+    end: "#fde3c8",
+    label: "Errand",
+    labelColor: "#9a3412",
+    border: "#fbd38d",
+    accent: "#fde8ce",
+    badgeBg: "#f97316",
+    badgeColor: "#7c2d12",
+    titleColor: "#7c2d12",
+  },
+  meetings: {
+    id: "priority-meetings",
+    start: "#e0e7ff",
+    end: "#c7d2fe",
+    label: "Meetings",
+    labelColor: "#4338ca",
+    border: "#a5b4fc",
+    accent: "#e0e7ff",
+    badgeBg: "#6366f1",
+    badgeColor: "#312e81",
+    titleColor: "#312e81",
+  },
+};
+
+function getTaskVisual(priority?: string): KeyVisualDescriptor {
+  const trimmed = priority?.trim();
+  if (!trimmed) {
+    return BASE_VISUALS.task;
+  }
+
+  const normalizedKey = normalizePriorityKey(trimmed);
+  const mappedKey = PRIORITY_ALIASES[normalizedKey] ?? normalizedKey;
+  const style = PRIORITY_STYLE_MAP[mappedKey];
+  if (style) {
+    return { ...style, label: trimmed };
+  }
+
+  const fallbackId = normalizedKey ? `task-default-${normalizedKey}` : "task-default-custom";
+  return { ...BASE_VISUALS.task, id: fallbackId, label: trimmed };
+}
+
+function normalizePriorityKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function buildKeyImage(descriptor: KeyVisualDescriptor, position: number | undefined, lines: string[]): string {
   const width = 144;
   const height = 144;
-  const gradientId = `grad-${style}`;
+  const gradientId = `grad-${descriptor.id}`;
 
   const {
     start,
@@ -547,12 +735,13 @@ function buildKeyImage(style: KeyVisualState, position: number | undefined, line
     badgeBg,
     badgeColor,
     titleColor,
-  } = palette[style];
+  } = descriptor;
 
   const sanitizedLines = lines.length > 0 ? lines : [" "];
 
   const labelFontSize = 16;
   const labelY = 30;
+  const labelX = 15;
   const titleFontSize = 14;
   const titleStartY = 60;
   const lineHeight = titleFontSize + 6;
@@ -569,7 +758,7 @@ function buildKeyImage(style: KeyVisualState, position: number | undefined, line
 
   const titleLines = sanitizedLines.map((line, index) => {
     const y = titleStartY + index * lineHeight;
-    return `<text x="${width / 2}" y="${y}" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="${titleFontSize}" font-weight="500" fill="${titleColor}">${escapeSvgText(line)}</text>`;
+    return `<text x="${width / 2}" y="${y}" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="${titleFontSize}" font-weight="700" fill="${titleColor}">${escapeSvgText(line)}</text>`;
   }).join("");
 
   const svg = `
@@ -583,7 +772,7 @@ function buildKeyImage(style: KeyVisualState, position: number | undefined, line
       <rect width="${width}" height="${height}" rx="24" fill="url(#${gradientId})" />
       <rect x="4" y="4" width="${width - 8}" height="${height - 8}" rx="20" stroke="${border}" stroke-width="2" fill="none" />
       <rect x="18" y="26" width="${width - 36}" height="16" rx="8" fill="${accent}" opacity="0.6" />
-      <text x="${width / 2}" y="${labelY}" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="${labelFontSize}" font-weight="500" fill="${labelColor}">${label}</text>
+      <text x="${labelX}" y="${labelY}" text-anchor="start" font-family="Segoe UI, system-ui, sans-serif" font-size="${labelFontSize}" font-weight="500" fill="${labelColor}">${escapeSvgText(label)}</text>
       ${titleLines}
       ${badge}
     </svg>`;
