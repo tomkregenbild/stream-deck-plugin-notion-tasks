@@ -1,0 +1,47 @@
+{
+	"Name": "Notion Tasks",
+	"Version": "0.1.0.0",
+	"Author": "Tom Kregenbild",
+	"Actions": [
+		{
+			"Name": "Notion Today Task",
+			"UUID": "com.tom-kregenbild.notion-tasks.today",
+			"Icon": "imgs/actionIcon",
+			"Tooltip": "Shows a Notion task scheduled for today",
+			"States": [
+				{
+					"Image": "imgs/key",
+					"TitleAlignment": "middle",
+					"FontSize": "12"
+				}
+			],
+			"SupportedInMultiActions": false,
+			"PropertyInspectorPath": "ui/inspector.html",
+			"Controllers": ["Keypad"]
+		}
+	],
+	"Category": "Notion Tasks",
+	"CategoryIcon": "imgs/plugin/category-icon",
+	"CodePath": "bin/plugin.js",
+	"Description": "Created dynamic buttons per tasks in a Notion database and allows to check them as complete by clicking on the button",
+	"Icon": "imgs/plugin/marketplace",
+	"SDKVersion": 2,
+	"Software": {
+		"MinimumVersion": "6.5"
+	},
+	"OS": [
+		{
+			"Platform": "mac",
+			"MinimumVersion": "12"
+		},
+		{
+			"Platform": "windows",
+			"MinimumVersion": "10"
+		}
+	],
+	"Nodejs": {
+		"Version": "20",
+		"Debug": "enabled"
+	},
+	"UUID": "com.tom-kregenbild.notion-tasks"
+}
