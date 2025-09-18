@@ -205,50 +205,29 @@ class TaskCoordinator {
   }
 
   private async paint(state: ContextState, task?: NotionTask): Promise<void> {
-
     state.currentTask = task;
 
     let visual: KeyVisualState = "task";
-
     let title: string;
 
-
-
     if (!state.normalized.token || !state.normalized.db) {
-
       visual = "setup";
-
       title = wrapText("Configure Notion");
-
     } else if (this.lastError) {
-
       visual = "error";
-
       title = wrapText(`Error ${this.lastError}`);
-
     } else if (!task) {
-
       visual = "empty";
-
       title = wrapText("No tasks for today");
-
     } else {
-
       visual = "task";
-
-      title = formatTaskTitle(task.title, state.normalized.position);
-
+      title = formatTaskTitle(task.title);
     }
 
-
-
-    await state.action.setImage(buildKeyImage(visual, state.normalized.position));
-
-    await state.action.setTitle(title);
-
+    const lines = title.split("\n").filter(line => line.trim().length > 0);
+    await state.action.setImage(buildKeyImage(visual, state.normalized.position, lines));
+    await state.action.setTitle(undefined);
   }
-
-
 
   private primarySettings(): (NormalizedSettings & { cacheKey: string }) | undefined {
     const configured = Array.from(this.contexts.values()).find(ctx => ctx.normalized.token && ctx.normalized.db);
@@ -439,9 +418,8 @@ function extractTaskTitle(page: { id: string; url?: string; properties: NotionQu
   };
 }
 
-function formatTaskTitle(title: string, position?: number): string {
-  const base = position && position > 0 ? `${position}. ${title}` : title;
-  return wrapText(base);
+function formatTaskTitle(title: string): string {
+  return wrapText(title);
 }
 
 function wrapText(text: string, maxChars = TITLE_MAX_CHARS, maxLines = TITLE_MAX_LINES): string {
@@ -497,86 +475,102 @@ function truncateLine(value: string, maxChars: number): string {
 
 type KeyVisualState = "task" | "empty" | "error" | "setup";
 
-function buildKeyImage(style: KeyVisualState, position?: number): string {
+function buildKeyImage(style: KeyVisualState, position: number | undefined, lines: string[]): string {
   const palette: Record<KeyVisualState, {
     start: string;
     end: string;
-    accent: string;
-    baseGlow: string;
     label: string;
     labelColor: string;
+    border: string;
+    accent: string;
     badgeBg: string;
     badgeColor: string;
-    border: string;
+    titleColor: string;
   }> = {
     task: {
-      start: "#0f172a",
-      end: "#2563eb",
-      accent: "#38bdf8",
-      baseGlow: "#1d4ed8",
+      start: "#fdf2f8",
+      end: "#e0f2fe",
       label: "Today",
-      labelColor: "#dbeafe",
-      badgeBg: "#1e3a8a",
-      badgeColor: "#f8fafc",
-      border: "#0ea5e9",
+      labelColor: "#334155",
+      border: "#fbcfe8",
+      accent: "#dbeafe",
+      badgeBg: "#f472b6",
+      badgeColor: "#831843",
+      titleColor: "#1f2937",
     },
     empty: {
-      start: "#1e293b",
-      end: "#475569",
-      accent: "#94a3b8",
-      baseGlow: "#475569",
+      start: "#f5f5f4",
+      end: "#e5e7eb",
       label: "Today",
-      labelColor: "#e2e8f0",
-      badgeBg: "#334155",
-      badgeColor: "#f8fafc",
-      border: "#64748b",
+      labelColor: "#57534e",
+      border: "#d6d3d1",
+      accent: "#e7e5e4",
+      badgeBg: "#c8c5c0",
+      badgeColor: "#3f3f46",
+      titleColor: "#44403c",
     },
     error: {
-      start: "#7f1d1d",
-      end: "#dc2626",
-      accent: "#f97316",
-      baseGlow: "#b91c1c",
+      start: "#fef3c7",
+      end: "#fee2e2",
       label: "Check",
-      labelColor: "#fee2e2",
-      badgeBg: "#991b1b",
-      badgeColor: "#fee2e2",
-      border: "#fca5a5",
+      labelColor: "#b91c1c",
+      border: "#fed7aa",
+      accent: "#fde68a",
+      badgeBg: "#fca5a5",
+      badgeColor: "#7f1d1d",
+      titleColor: "#7c2d12",
     },
     setup: {
-      start: "#312e81",
-      end: "#6366f1",
-      accent: "#a855f7",
-      baseGlow: "#4338ca",
+      start: "#ede9fe",
+      end: "#cffafe",
       label: "Notion",
-      labelColor: "#ede9fe",
-      badgeBg: "#4338ca",
-      badgeColor: "#ede9fe",
-      border: "#818cf8",
+      labelColor: "#4338ca",
+      border: "#c7d2fe",
+      accent: "#e0e7ff",
+      badgeBg: "#a5b4fc",
+      badgeColor: "#312e81",
+      titleColor: "#312e81",
     },
   };
 
   const width = 144;
   const height = 144;
   const gradientId = `grad-${style}`;
+
   const {
     start,
     end,
-    accent,
-    baseGlow,
     label,
     labelColor,
+    border,
+    accent,
     badgeBg,
     badgeColor,
-    border,
+    titleColor,
   } = palette[style];
 
+  const sanitizedLines = lines.length > 0 ? lines : [" "];
+
+  const labelFontSize = 16;
+  const labelY = 30;
+  const titleFontSize = 14;
+  const titleStartY = 60;
+  const lineHeight = titleFontSize + 6;
+
   const badgeValue = position && position > 0 ? (position > 99 ? "99+" : String(position)) : undefined;
+  const badgeOffsetX = width - 36;
+  const badgeOffsetY = labelY - 12;
   const badge = badgeValue
-    ? `<g transform="translate(${width - 48}, 20)">
-        <circle cx="18" cy="18" r="18" fill="${badgeBg}" opacity="0.9" />
-        <text x="18" y="24" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="${badgeValue.length > 2 ? 14 : 18}" font-weight="700" fill="${badgeColor}">${badgeValue}</text>
+    ? `<g transform="translate(${badgeOffsetX}, ${badgeOffsetY})">
+        <circle cx="8" cy="8" r="12" fill="${badgeBg}" opacity="0.95" />
+        <text x="8" y="12" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="12" font-weight="600" fill="${badgeColor}">${escapeSvgText(badgeValue)}</text>
       </g>`
     : "";
+
+  const titleLines = sanitizedLines.map((line, index) => {
+    const y = titleStartY + index * lineHeight;
+    return `<text x="${width / 2}" y="${y}" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="${titleFontSize}" font-weight="500" fill="${titleColor}">${escapeSvgText(line)}</text>`;
+  }).join("");
 
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
@@ -587,14 +581,23 @@ function buildKeyImage(style: KeyVisualState, position?: number): string {
         </linearGradient>
       </defs>
       <rect width="${width}" height="${height}" rx="24" fill="url(#${gradientId})" />
-      <rect x="2" y="2" width="${width - 4}" height="${height - 4}" rx="22" stroke="${border}" stroke-width="3" fill="none" opacity="0.55" />
-      <rect x="12" y="${height - 44}" width="${width - 24}" height="32" rx="16" fill="${baseGlow}" opacity="0.22" />
-      <rect x="16" y="14" width="${width - 32}" height="24" rx="12" fill="${accent}" opacity="0.28" />
-      <text x="${width / 2}" y="32" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="600" fill="${labelColor}">${label}</text>
+      <rect x="4" y="4" width="${width - 8}" height="${height - 8}" rx="20" stroke="${border}" stroke-width="2" fill="none" />
+      <rect x="18" y="26" width="${width - 36}" height="16" rx="8" fill="${accent}" opacity="0.6" />
+      <text x="${width / 2}" y="${labelY}" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="${labelFontSize}" font-weight="500" fill="${labelColor}">${label}</text>
+      ${titleLines}
       ${badge}
     </svg>`;
 
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function escapeSvgText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
 function toIsoDate(date: Date): string {
