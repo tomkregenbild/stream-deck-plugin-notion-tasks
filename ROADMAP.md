@@ -4,7 +4,7 @@ This phased plan lays out how we can grow the plugin from the current key-only
 experience into a richer package that powers both keys and dial actions while
 exposing deeper task insights.
 
-## Phase 0 – Discovery & Foundations
+## Phase 0 – Discovery & Foundations - COMPLETED
 
 - Audit the existing key action flow, shared `TaskCoordinator`, and Notion API
   usage to confirm which data points are already fetched and cached.
@@ -14,7 +14,7 @@ exposing deeper task insights.
 - Document the canonical format for tasks (`NotionTask`) so future phases can
   work against the same schema.
 
-## Phase 1 – Data Model & Fetch Enhancements
+## Phase 1 – Data Model & Fetch Enhancements - COMPLETED
 
 - Extend Notion queries to pull all required properties in one request
   (completed status, pillar, project, due date, priority, URLs).
