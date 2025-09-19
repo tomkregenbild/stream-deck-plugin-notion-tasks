@@ -162,7 +162,22 @@ describe("buildTaskSummary", () => {
     expect(summary.nextMeeting?.id).toBe("1");
 
     const defaultSummary = buildTaskSummary(tasks, "Done", DEFAULT_MEETING_PRIORITY, DEFAULT_METRICS_ORDER);
-    expect(defaultSummary.nextMeeting).toBeUndefined();
+    expect(defaultSummary.nextMeeting?.id).toBe("2");
+  });
+
+  it("falls back to default meeting priority names when overrides miss", () => {
+    const tasks = [
+      {
+        id: "7",
+        title: "Town Hall",
+        priority: "Meeting",
+        status: "In Progress",
+        due: "2024-09-06",
+      },
+    ] as any;
+
+    const summary = buildTaskSummary(tasks, "Done", "Quick Task", DEFAULT_METRICS_ORDER);
+    expect(summary.nextMeeting?.id).toBe("7");
   });
 });
 

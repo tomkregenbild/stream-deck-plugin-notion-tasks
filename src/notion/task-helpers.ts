@@ -173,7 +173,12 @@ export function buildTaskSummary(
   let completed = 0;
   let nextMeeting: NotionTask | undefined;
 
-  const meetingKey = normalizePriorityKey(meetingPriority);
+  const meetingKeys = new Set<string>();
+  const normalizedExplicit = normalizePriorityKey(meetingPriority);
+  if (normalizedExplicit) meetingKeys.add(normalizedExplicit);
+  meetingKeys.add(normalizePriorityKey(DEFAULT_MEETING_PRIORITY));
+  meetingKeys.add("meeting");
+  meetingKeys.add("meetings");
 
   for (const task of tasks) {
     const completedTask = isTaskCompleted(task, doneValue);
@@ -190,16 +195,21 @@ export function buildTaskSummary(
     const projectLabel = displayLabel(task.project, "Unspecified");
     incrementCount(byProject, projectLabel);
 
-    if (meetingKey && normalizePriorityKey(task.priority ?? "") === meetingKey) {
-      if (!nextMeeting) {
+    if (!nextMeeting && meetingKeys.has(normalizePriorityKey(task.priority ?? ""))) {
+      nextMeeting = task;
+      continue;
+    }
+    if (nextMeeting && meetingKeys.has(normalizePriorityKey(task.priority ?? ""))) {
+      const compare = compareDateStrings(task.due, nextMeeting.due);
+      if (compare < 0) {
         nextMeeting = task;
-      } else {
-        const compare = compareDateStrings(task.due, nextMeeting.due);
-        if (compare < 0) {
-          nextMeeting = task;
-        }
       }
     }
+  }
+
+  if (!nextMeeting && activeTasks.length > 0) {
+    const sortedActive = sortTasks(activeTasks);
+    nextMeeting = sortedActive[0];
   }
 
   return {

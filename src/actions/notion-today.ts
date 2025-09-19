@@ -85,9 +85,21 @@ interface ContextState {
   currentTask?: NotionTask;
 }
 
+type SummaryListener = (summary: TaskSummary | undefined) => void;
+
+let sharedCoordinator: TaskCoordinator | undefined;
+const summaryListeners = new Set<SummaryListener>();
+
+function getCoordinator(): TaskCoordinator {
+  if (!sharedCoordinator) {
+    sharedCoordinator = new TaskCoordinator();
+  }
+  return sharedCoordinator;
+}
+
 @action({ UUID: "com.tom-kregenbild.notion-tasks.today" })
 export class NotionTodayAction extends SingletonAction<NotionSettings> {
-  private readonly coordinator = new TaskCoordinator();
+  private readonly coordinator = getCoordinator();
 
   override async onWillAppear(ev: WillAppearEvent<NotionSettings>): Promise<void> {
     const action = ev.action as unknown as KeyAction<NotionSettings>;
@@ -197,6 +209,7 @@ class TaskCoordinator {
       this.tasks = [];
       this.summary = undefined;
       this.lastError = undefined;
+      notifySummaryListeners(this.summary);
       return;
     }
     const settings = this.primarySettings();
@@ -205,6 +218,7 @@ class TaskCoordinator {
       this.summary = undefined;
       this.lastError = undefined;
       await this.paintAll();
+      notifySummaryListeners(this.summary);
       return;
     }
 
@@ -227,11 +241,13 @@ class TaskCoordinator {
         this.tasks = summary.activeTasks;
         this.summary = summary;
         this.lastError = error;
+        notifySummaryListeners(this.summary);
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : String(error);
         this.tasks = [];
         this.summary = undefined;
         streamDeck.logger.error("Notion fetch failed", error);
+        notifySummaryListeners(this.summary);
       }
       await this.paintAll();
     })();
@@ -473,6 +489,32 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
     metricsOrder: sanitizeMetricsOrder(settings.metricsOrder ?? DEFAULT_METRICS_ORDER),
     position: parsePosition(settings.position),
   };
+}
+
+export function getNotionTodaySummary(): TaskSummary | undefined {
+  return getCoordinator().getSummary();
+}
+
+export function subscribeToNotionSummary(listener: SummaryListener): () => void {
+  summaryListeners.add(listener);
+  try {
+    listener(getCoordinator().getSummary());
+  } catch (error) {
+    streamDeck.logger.warn("Summary listener threw during subscribe", error);
+  }
+  return () => {
+    summaryListeners.delete(listener);
+  };
+}
+
+function notifySummaryListeners(summary: TaskSummary | undefined): void {
+  for (const listener of summaryListeners) {
+    try {
+      listener(summary);
+    } catch (error) {
+      streamDeck.logger.warn("Summary listener threw", error);
+    }
+  }
 }
 
 function extractTask(
