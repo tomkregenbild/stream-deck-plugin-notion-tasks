@@ -25,7 +25,7 @@ exposing deeper task insights.
 - Add unit-style tests around the sort order (due date → priority → title) and
   new parsers to prevent regressions.
 
-## Phase 2 – Settings & Aggregations
+## Phase 2 – Settings & Aggregations - COMPLETED
 
 - Expand plugin settings to capture pillar column name, project column name,
   meeting priority override, and metric ordering preferences.
