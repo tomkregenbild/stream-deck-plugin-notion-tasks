@@ -18,6 +18,8 @@ export interface NotionTask {
   url?: string;
 }
 
+export type MetricKey = "total" | "completed" | "active" | "nextMeeting" | "byPillar" | "byProject";
+
 export interface TaskSummary {
   total: number;
   completed: number;
@@ -26,8 +28,12 @@ export interface TaskSummary {
   byPillar: Record<string, number>;
   byProject: Record<string, number>;
   nextMeeting?: NotionTask;
+  meetingPriority: string;
+  metricsOrder: MetricKey[];
   generatedAt: number;
 }
+
+export const DEFAULT_MEETING_PRIORITY = "Meetings";
 
 export const PRIORITY_SEQUENCE = [
   "remember",
@@ -53,6 +59,10 @@ export const PRIORITY_ORDER = PRIORITY_SEQUENCE.reduce<Record<string, number>>((
   acc[key] = index;
   return acc;
 }, {});
+
+const METRIC_VALUES: MetricKey[] = ["total", "completed", "active", "nextMeeting", "byPillar", "byProject"];
+
+export const DEFAULT_METRICS_ORDER: MetricKey[] = [...METRIC_VALUES];
 
 export function normalizePriorityKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -124,12 +134,46 @@ export function extractDateValue(prop: NotionPropertyValue | undefined): string 
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export function buildTaskSummary(tasks: NotionTask[], doneValue: string): TaskSummary {
+export function sanitizeMetricsOrder(input: unknown): MetricKey[] {
+  const candidateArray: unknown[] = Array.isArray(input)
+    ? input
+    : typeof input === "string"
+      ? input
+          .split(',')
+          .map(piece => piece.trim())
+          .filter(piece => piece.length > 0)
+      : [];
+
+  const seen = new Set<MetricKey>();
+  for (const candidate of candidateArray) {
+    if (typeof candidate !== "string") continue;
+    const normalized = candidate.trim();
+    const metric = METRIC_VALUES.find(value => value.toLowerCase() === normalized.toLowerCase());
+    if (metric && !seen.has(metric)) {
+      seen.add(metric);
+    }
+  }
+
+  if (seen.size === 0) {
+    return [...DEFAULT_METRICS_ORDER];
+  }
+
+  return Array.from(seen);
+}
+
+export function buildTaskSummary(
+  tasks: NotionTask[],
+  doneValue: string,
+  meetingPriority: string,
+  metricsOrder: MetricKey[],
+): TaskSummary {
   const activeTasks: NotionTask[] = [];
   const byPillar: Record<string, number> = {};
   const byProject: Record<string, number> = {};
   let completed = 0;
   let nextMeeting: NotionTask | undefined;
+
+  const meetingKey = normalizePriorityKey(meetingPriority);
 
   for (const task of tasks) {
     const completedTask = isTaskCompleted(task, doneValue);
@@ -146,7 +190,7 @@ export function buildTaskSummary(tasks: NotionTask[], doneValue: string): TaskSu
     const projectLabel = displayLabel(task.project, "Unspecified");
     incrementCount(byProject, projectLabel);
 
-    if (normalizePriorityKey(task.priority ?? "") === "meetings") {
+    if (meetingKey && normalizePriorityKey(task.priority ?? "") === meetingKey) {
       if (!nextMeeting) {
         nextMeeting = task;
       } else {
@@ -166,6 +210,8 @@ export function buildTaskSummary(tasks: NotionTask[], doneValue: string): TaskSu
     byPillar,
     byProject,
     nextMeeting,
+    meetingPriority,
+    metricsOrder: [...metricsOrder],
     generatedAt: Date.now(),
   };
 }

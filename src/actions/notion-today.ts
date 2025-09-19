@@ -13,13 +13,17 @@ import type { KeyAction } from "@elgato/streamdeck";
 
 import {
   PRIORITY_ALIASES,
+  DEFAULT_MEETING_PRIORITY,
+  DEFAULT_METRICS_ORDER,
   buildTaskSummary,
   extractDateValue,
   extractPropertyText,
   normalizePriorityKey,
+  sanitizeMetricsOrder,
   sortTasks,
   type NotionTask,
   type TaskSummary,
+  type MetricKey,
 } from "../notion/task-helpers";
 
 const DEFAULT_STATUS_PROPERTY = "Status";
@@ -28,6 +32,7 @@ const DEFAULT_DATE_PROPERTY = "Due";
 const DEFAULT_PRIORITY_PROPERTY = "Priority";
 const DEFAULT_PILLAR_PROPERTY = "Pillar";
 const DEFAULT_PROJECT_PROPERTY = "Project";
+const DEFAULT_MEETING_PRIORITY_OVERRIDE = DEFAULT_MEETING_PRIORITY;
 const TITLE_MAX_LINES = 3;
 const TITLE_MAX_CHARS = 14;
 
@@ -40,6 +45,8 @@ export type NotionSettings = {
   priorityProp?: string;
   pillarProp?: string;
   projectProp?: string;
+  meetingPriority?: string;
+  metricsOrder?: string | string[];
   position?: number | string;
 };
 
@@ -52,6 +59,8 @@ interface NormalizedSettings {
   priorityProp: string;
   pillarProp: string;
   projectProp: string;
+  meetingPriority: string;
+  metricsOrder: MetricKey[];
   position?: number;
 }
 
@@ -120,6 +129,10 @@ class TaskCoordinator {
   private tasks: NotionTask[] = [];
   private summary?: TaskSummary;
   private lastError?: string;
+
+  getSummary(): TaskSummary | undefined {
+    return this.summary;
+  }
 
   async attach(action: KeyAction<NotionSettings>, settings: NotionSettings): Promise<void> {
     const { normalized, persistedSettings, needsPersist } = this.normalizeAndAssign(action.id, settings);
@@ -205,7 +218,12 @@ class TaskCoordinator {
     const refreshPromise = (async () => {
       try {
         const { tasks, error } = await this.notion.fetchTodayTasks(settings, force);
-        const summary = buildTaskSummary(tasks, settings.doneValue);
+        const summary = buildTaskSummary(
+          tasks,
+          settings.doneValue,
+          settings.meetingPriority,
+          settings.metricsOrder,
+        );
         this.tasks = summary.activeTasks;
         this.summary = summary;
         this.lastError = error;
@@ -268,7 +286,7 @@ class TaskCoordinator {
     const { normalized } = configured;
     return {
       ...normalized,
-      cacheKey: `${normalized.token}|${normalized.db}|${normalized.statusProp}|${normalized.doneValue}|${normalized.dateProp}|${normalized.priorityProp}|${normalized.pillarProp}|${normalized.projectProp}`,
+      cacheKey: `${normalized.token}|${normalized.db}|${normalized.statusProp}|${normalized.doneValue}|${normalized.dateProp}|${normalized.priorityProp}|${normalized.pillarProp}|${normalized.projectProp}|${normalized.meetingPriority}|${normalized.metricsOrder.join(";")}`,
     };
   }
 
@@ -451,6 +469,8 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
     priorityProp: trim(settings.priorityProp) ?? DEFAULT_PRIORITY_PROPERTY,
     pillarProp: trim(settings.pillarProp) ?? DEFAULT_PILLAR_PROPERTY,
     projectProp: trim(settings.projectProp) ?? DEFAULT_PROJECT_PROPERTY,
+    meetingPriority: trim(settings.meetingPriority) ?? DEFAULT_MEETING_PRIORITY_OVERRIDE,
+    metricsOrder: sanitizeMetricsOrder(settings.metricsOrder ?? DEFAULT_METRICS_ORDER),
     position: parsePosition(settings.position),
   };
 }
