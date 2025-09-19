@@ -20,7 +20,15 @@ interface DialContextState {
   settings: NotionSettings;
   metricIndex: number;
   unsubscribe?: () => void;
+  layoutApplied?: boolean;
 }
+
+const TOUCH_LAYOUT_PATH = "layouts/notion-metrics.touch-layout.json";
+const LOADING_FEEDBACK = {
+  title: { value: "Loading Notion…" },
+  value: { value: "" },
+  hint: { value: "" },
+} as const;
 
 @action({ UUID: "com.tom-kregenbild.notion-tasks.today.dial" })
 export class NotionTodayDialAction extends SingletonAction<NotionSettings> {
@@ -35,6 +43,8 @@ export class NotionTodayDialAction extends SingletonAction<NotionSettings> {
       metricIndex: 0,
     };
     this.contexts.set(action.id, state);
+    await applyLayoutIfNeeded(state);
+    await state.action.setFeedback({ ...LOADING_FEEDBACK });
     await state.action.setTitle("Loading Notion…");
     state.unsubscribe = subscribeToNotionSummary(summary => {
       if (!this.contexts.has(state.id)) return;
@@ -82,6 +92,9 @@ export class NotionTodayDialAction extends SingletonAction<NotionSettings> {
   private async paint(state: DialContextState, summary?: TaskSummary): Promise<void> {
     const currentSummary = summary ?? getNotionTodaySummary();
     if (!currentSummary) {
+      await applyLayoutIfNeeded(state);
+      await state.action.setFeedback({ ...LOADING_FEEDBACK });
+      await state.action.setTitle("Loading Notion…");
       return;
     }
     const metrics = dedupeMetrics(currentSummary.metricsOrder ?? DEFAULT_METRICS_ORDER);
@@ -98,14 +111,14 @@ export class NotionTodayDialAction extends SingletonAction<NotionSettings> {
 
     const dialImage = buildDialImage(currentSummary, metric);
     await state.action.setImage(dialImage);
+    await applyLayoutIfNeeded(state);
+    const feedback = buildTouchFeedback(currentSummary, metric);
+    await state.action.setFeedback(feedback);
     await state.action.setTitle(buildTouchContent(currentSummary, metric));
   }
 }
 
-function buildTouchContent(summary: TaskSummary | undefined, metric: DialMetric): string {
-  if (!summary) {
-    return "Loading Notion…";
-  }
+function buildTouchContent(summary: TaskSummary, metric: DialMetric): string {
   const completion = summary.total === 0 ? 0 : Math.round((summary.completed / summary.total) * 100);
   switch (metric) {
     case "total":
@@ -326,3 +339,94 @@ function dedupeMetrics(metrics: DialMetric[]): DialMetric[] {
   }
   return result.length > 0 ? result : [...DEFAULT_METRICS_ORDER];
 }
+
+async function applyLayoutIfNeeded(state: DialContextState): Promise<void> {
+  if (state.layoutApplied) return;
+  await state.action.setFeedbackLayout(TOUCH_LAYOUT_PATH);
+  state.layoutApplied = true;
+}
+
+function buildTouchFeedback(summary: TaskSummary, metric: DialMetric) {
+  const completion = summary.total === 0 ? 0 : Math.round((summary.completed / summary.total) * 100);
+  switch (metric) {
+    case "total":
+      return {
+        title: { value: "Total tasks" },
+        value: { value: String(summary.total) },
+        hint: { value: "Rotate for details" },
+      };
+    case "completed":
+      return {
+        title: { value: "Completed" },
+        value: { value: String(summary.completed) },
+        hint: { value: `${summary.active} active` },
+      };
+    case "active":
+      return {
+        title: { value: "Active" },
+        value: { value: `${summary.active}/${summary.total}` },
+        hint: { value: `${completion}% done` },
+      };
+    case "nextMeeting": {
+      if (summary.nextMeeting) {
+        const title = truncate(summary.nextMeeting.title, 40);
+        const due = summary.nextMeeting.due ? `Due ${summary.nextMeeting.due}` : "No due date";
+        return {
+          title: { value: "Next meeting" },
+          value: { value: title },
+          hint: { value: due },
+        };
+      }
+      return {
+        title: { value: "Next meeting" },
+        value: { value: "None" },
+        hint: { value: "Rotate for more" },
+      };
+    }
+    case "byPillar": {
+      const top = topEntry(summary.byPillar);
+      if (top) {
+        return {
+          title: { value: "Top pillar" },
+          value: { value: truncate(top.label, 40) },
+          hint: { value: formatCount(top.count) },
+        };
+      }
+      return {
+        title: { value: "Top pillar" },
+        value: { value: "None" },
+        hint: { value: "Rotate for more" },
+      };
+    }
+    case "byProject": {
+      const top = topEntry(summary.byProject);
+      if (top) {
+        return {
+          title: { value: "Top project" },
+          value: { value: truncate(top.label, 40) },
+          hint: { value: formatCount(top.count) },
+        };
+      }
+      return {
+        title: { value: "Top project" },
+        value: { value: "None" },
+        hint: { value: "Rotate for more" },
+      };
+    }
+    default:
+      return {
+        title: { value: "Active" },
+        value: { value: `${summary.active}/${summary.total}` },
+        hint: { value: `${completion}% done` },
+      };
+  }
+}
+
+
+
+
+
+
+
+
+

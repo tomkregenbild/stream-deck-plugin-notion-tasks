@@ -12,12 +12,14 @@
 				{
 					"Image": "imgs/key",
 					"TitleAlignment": "middle",
-					"FontSize": "12"
+					"FontSize": 12
 				}
 			],
 			"SupportedInMultiActions": false,
 			"PropertyInspectorPath": "ui/inspector.html",
-			"Controllers": ["Keypad"]
+			"Controllers": [
+				"Keypad"
+			]
 		},
 		{
 			"Name": "Notion Today Metrics",
@@ -25,18 +27,22 @@
 			"Icon": "imgs/actionIcon",
 			"Tooltip": "Shows summary stats for today's Notion tasks on the dial",
 			"PropertyInspectorPath": "ui/inspector.html",
-			"Controllers": ["Encoder"],
+			"Controllers": [
+				"Encoder"
+			],
 			"Encoder": {
-				"RotationEnabled": true,
-				"PushEnabled": false,
-				"TouchEnabled": false
+				"layout": "layouts/notion-metrics.touch-layout.json",
+				"background": "touchscreen-background",
+				"TriggerDescription": {
+					"Rotate": "Cycle metrics"
+				}
 			},
 			"States": [
 				{
 					"Image": "imgs/key",
 					"Title": "",
 					"TitleAlignment": "middle",
-					"FontSize": "12"
+					"FontSize": 12
 				}
 			]
 		}

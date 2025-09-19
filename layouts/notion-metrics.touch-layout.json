@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+  "id": "notion-metrics",
+  "items": [
+    {
+      "key": "title",
+      "type": "text",
+      "rect": [
+        12,
+        6,
+        120,
+        28
+      ],
+      "font": {
+        "size": 18,
+        "weight": 600
+      },
+      "alignment": "left"
+    },
+    {
+      "key": "value",
+      "type": "text",
+      "rect": [
+        12,
+        34,
+        120,
+        24
+      ],
+      "font": {
+        "size": 16,
+        "weight": 500
+      },
+      "alignment": "left"
+    },
+    {
+      "key": "hint",
+      "type": "text",
+      "rect": [
+        12,
+        56,
+        120,
+        20
+      ],
+      "font": {
+        "size": 14,
+        "weight": 400
+      },
+      "color": "#9ca3af",
+      "alignment": "left"
+    }
+  ]
+}
