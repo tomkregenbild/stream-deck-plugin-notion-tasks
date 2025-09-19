@@ -11,10 +11,23 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import type { KeyAction } from "@elgato/streamdeck";
 
+import {
+  PRIORITY_ALIASES,
+  buildTaskSummary,
+  extractDateValue,
+  extractPropertyText,
+  normalizePriorityKey,
+  sortTasks,
+  type NotionTask,
+  type TaskSummary,
+} from "../notion/task-helpers";
+
 const DEFAULT_STATUS_PROPERTY = "Status";
 const DEFAULT_DONE_VALUE = "Done";
 const DEFAULT_DATE_PROPERTY = "Due";
 const DEFAULT_PRIORITY_PROPERTY = "Priority";
+const DEFAULT_PILLAR_PROPERTY = "Pillar";
+const DEFAULT_PROJECT_PROPERTY = "Project";
 const TITLE_MAX_LINES = 3;
 const TITLE_MAX_CHARS = 14;
 
@@ -25,6 +38,8 @@ export type NotionSettings = {
   doneValue?: string;
   dateProp?: string;
   priorityProp?: string;
+  pillarProp?: string;
+  projectProp?: string;
   position?: number | string;
 };
 
@@ -35,15 +50,9 @@ interface NormalizedSettings {
   doneValue: string;
   dateProp: string;
   priorityProp: string;
+  pillarProp: string;
+  projectProp: string;
   position?: number;
-}
-
-interface NotionTask {
-  id: string;
-  title: string;
-  priority?: string;
-  due?: string;
-  url?: string;
 }
 
 type KeyVisualDescriptor = {
@@ -109,6 +118,7 @@ class TaskCoordinator {
   private readonly notion = new NotionClient();
   private readonly pendingRefreshes = new Map<string, Promise<void>>();
   private tasks: NotionTask[] = [];
+  private summary?: TaskSummary;
   private lastError?: string;
 
   async attach(action: KeyAction<NotionSettings>, settings: NotionSettings): Promise<void> {
@@ -172,12 +182,14 @@ class TaskCoordinator {
   private async refresh(force = false): Promise<void> {
     if (this.contexts.size === 0) {
       this.tasks = [];
+      this.summary = undefined;
       this.lastError = undefined;
       return;
     }
     const settings = this.primarySettings();
     if (!settings) {
       this.tasks = [];
+      this.summary = undefined;
       this.lastError = undefined;
       await this.paintAll();
       return;
@@ -193,11 +205,14 @@ class TaskCoordinator {
     const refreshPromise = (async () => {
       try {
         const { tasks, error } = await this.notion.fetchTodayTasks(settings, force);
-        this.tasks = tasks;
+        const summary = buildTaskSummary(tasks, settings.doneValue);
+        this.tasks = summary.activeTasks;
+        this.summary = summary;
         this.lastError = error;
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : String(error);
         this.tasks = [];
+        this.summary = undefined;
         streamDeck.logger.error("Notion fetch failed", error);
       }
       await this.paintAll();
@@ -253,7 +268,7 @@ class TaskCoordinator {
     const { normalized } = configured;
     return {
       ...normalized,
-      cacheKey: `${normalized.token}|${normalized.db}|${normalized.statusProp}|${normalized.doneValue}|${normalized.dateProp}|${normalized.priorityProp}`,
+      cacheKey: `${normalized.token}|${normalized.db}|${normalized.statusProp}|${normalized.doneValue}|${normalized.dateProp}|${normalized.priorityProp}|${normalized.pillarProp}|${normalized.projectProp}`,
     };
   }
 
@@ -351,10 +366,8 @@ class NotionClient {
       const body = {
         page_size: 100,
         filter: {
-          and: [
-            { property: settings.dateProp, date: { equals: today } },
-            { property: settings.statusProp, status: { does_not_equal: settings.doneValue } },
-          ],
+          property: settings.dateProp,
+          date: { equals: today },
         },
         sorts: [{ property: settings.dateProp, direction: "ascending" }],
       } satisfies Record<string, unknown>;
@@ -377,7 +390,7 @@ class NotionClient {
 
       const data = (await res.json()) as NotionQueryResponse;
       const tasks = (data.results ?? [])
-        .map(page => extractTask(page, settings.priorityProp, settings.dateProp))
+        .map(page => extractTask(page, settings))
         .filter((task): task is NotionTask => Boolean(task));
       return { tasks: sortTasks(tasks) };
     } catch (error) {
@@ -436,57 +449,33 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
     doneValue: trim(settings.doneValue) ?? DEFAULT_DONE_VALUE,
     dateProp: trim(settings.dateProp) ?? DEFAULT_DATE_PROPERTY,
     priorityProp: trim(settings.priorityProp) ?? DEFAULT_PRIORITY_PROPERTY,
+    pillarProp: trim(settings.pillarProp) ?? DEFAULT_PILLAR_PROPERTY,
+    projectProp: trim(settings.projectProp) ?? DEFAULT_PROJECT_PROPERTY,
     position: parsePosition(settings.position),
   };
 }
 
 function extractTask(
   page: { id: string; url?: string; properties: NotionQueryResponse["results"][number]["properties"] },
-  priorityPropertyName: string,
-  datePropertyName: string,
+  settings: Pick<NormalizedSettings, "statusProp" | "priorityProp" | "dateProp" | "pillarProp" | "projectProp">,
 ): NotionTask | undefined {
   const titleProperty = Object.values(page.properties).find(prop => prop.type === "title");
   const title = titleProperty?.title?.map(piece => piece.plain_text).join("") ?? "(untitled)";
-  const priority = extractPriorityValue(page.properties[priorityPropertyName]);
-  const due = extractDateValue(page.properties[datePropertyName]);
+  const priority = extractPropertyText(page.properties[settings.priorityProp]);
+  const status = extractPropertyText(page.properties[settings.statusProp]);
+  const due = extractDateValue(page.properties[settings.dateProp]);
+  const pillar = extractPropertyText(page.properties[settings.pillarProp]);
+  const project = extractPropertyText(page.properties[settings.projectProp]);
   return {
     id: page.id,
     title,
     priority,
+    status,
+    pillar,
+    project,
     due,
     url: page.url,
   };
-}
-
-function extractPriorityValue(
-  prop: NotionQueryResponse["results"][number]["properties"][string] | undefined,
-): string | undefined {
-  if (!prop) return undefined;
-  switch (prop.type) {
-    case "status":
-      return prop.status?.name?.trim() || undefined;
-    case "select":
-      return prop.select?.name?.trim() || undefined;
-    case "multi_select":
-      return prop.multi_select?.[0]?.name?.trim() || undefined;
-    case "rich_text": {
-      const text = prop.rich_text?.map(piece => piece.plain_text).join("") ?? "";
-      const trimmed = text.trim();
-      return trimmed.length > 0 ? trimmed : undefined;
-    }
-    default:
-      return undefined;
-  }
-}
-
-function extractDateValue(
-  prop: NotionQueryResponse["results"][number]["properties"][string] | undefined,
-): string | undefined {
-  if (!prop || prop.type !== "date") return undefined;
-  const value = prop.date?.start ?? undefined;
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function formatTaskTitle(title: string): string {
@@ -594,31 +583,6 @@ const BASE_VISUALS: Record<"task" | "empty" | "error" | "setup", KeyVisualDescri
     titleColor: "#312e81",
   },
 };
-
-const PRIORITY_ALIASES: Record<string, string> = {
-  "first-priority": "1st-priority",
-  "second-priority": "2nd-priority",
-  "third-priority": "3rd-priority",
-  "fourth-priority": "4th-priority",
-  "fifth-priority": "5th-priority",
-};
-
-const PRIORITY_SEQUENCE = [
-  "remember",
-  "quick-task",
-  "1st-priority",
-  "2nd-priority",
-  "3rd-priority",
-  "4th-priority",
-  "5th-priority",
-  "errand",
-  "meetings",
-] as const;
-
-const PRIORITY_ORDER = PRIORITY_SEQUENCE.reduce<Record<string, number>>((acc, key, index) => {
-  acc[key] = index;
-  return acc;
-}, {});
 
 const PRIORITY_STYLE_MAP: Record<string, KeyVisualDescriptor> = {
   remember: {
@@ -748,49 +712,6 @@ function getTaskVisual(priority?: string): KeyVisualDescriptor {
   return { ...BASE_VISUALS.task, id: fallbackId, label: trimmed };
 }
 
-function normalizePriorityKey(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-
-function prioritySortIndex(priority?: string): number {
-  if (!priority) {
-    return PRIORITY_SEQUENCE.length + 1;
-  }
-  const normalizedKey = normalizePriorityKey(priority);
-  if (!normalizedKey) {
-    return PRIORITY_SEQUENCE.length + 1;
-  }
-  const mappedKey = PRIORITY_ALIASES[normalizedKey] ?? normalizedKey;
-  const index = PRIORITY_ORDER[mappedKey];
-  if (index !== undefined) {
-    return index;
-  }
-  return PRIORITY_SEQUENCE.length + 1;
-}
-
-function sortTasks(tasks: NotionTask[]): NotionTask[] {
-  return tasks.slice().sort((a, b) => {
-    const dueCompare = compareDateStrings(a.due, b.due);
-    if (dueCompare !== 0) {
-      return dueCompare;
-    }
-
-    const priorityCompare = prioritySortIndex(a.priority) - prioritySortIndex(b.priority);
-    if (priorityCompare !== 0) {
-      return priorityCompare;
-    }
-
-    return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
-  });
-}
-
-function compareDateStrings(a?: string, b?: string): number {
-  if (!a && !b) return 0;
-  if (!a) return 1;
-  if (!b) return -1;
-  return a.localeCompare(b);
-}
-
 function buildKeyImage(descriptor: KeyVisualDescriptor, position: number | undefined, lines: string[]): string {
   const width = 144;
   const height = 144;
@@ -859,6 +780,7 @@ function escapeSvgText(value: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
 }
+
 
 function toIsoDate(date: Date): string {
   const year = date.getFullYear();

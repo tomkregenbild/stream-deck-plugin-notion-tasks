@@ -9,8 +9,10 @@
 		"noImplicitOverride": true
 	},
 	"include": [
-		"src/**/*.ts"
-, "src/index.js"	],
+		"src/**/*.ts",
+		"src/index.js",
+		"tests/**/*.ts"
+	],
 	"exclude": [
 		"node_modules"
 	]
