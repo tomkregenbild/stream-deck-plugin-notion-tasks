@@ -45,6 +45,7 @@ interface DialContextState {
 
 
 const TOUCH_LAYOUT_PATH = "layouts/notion-metrics.touch-layout.json";
+const EXCLUDED_METRICS = new Set<DialMetric>(["total", "completed"]);
 
 const logger = streamDeck.logger.createScope("NotionTodayDial");
 const INITIAL_FEEDBACK = {
@@ -739,7 +740,12 @@ function dedupeMetrics(metrics: DialMetric[]): DialMetric[] {
     seen.add(metric);
     result.push(metric);
   }
-  return result.length > 0 ? result : [...DEFAULT_METRICS_ORDER];
+  const filtered = result.filter(metric => !EXCLUDED_METRICS.has(metric));
+  if (filtered.length > 0) {
+    return filtered;
+  }
+  const defaultFiltered = DEFAULT_METRICS_ORDER.filter(metric => !EXCLUDED_METRICS.has(metric));
+  return defaultFiltered.length > 0 ? [...defaultFiltered] : [...DEFAULT_METRICS_ORDER];
 }
 
 async function applyLayoutIfNeeded(state: DialContextState): Promise<void> {
