@@ -16,12 +16,6 @@ import {
 
 import streamDeck from "@elgato/streamdeck";
 
-import { access } from "node:fs/promises";
-
-import { resolve } from "node:path";
-
-import { fileURLToPath } from "node:url";
-
 
 
 import type { DialAction } from "@elgato/streamdeck";
@@ -754,70 +748,29 @@ function dedupeMetrics(metrics: DialMetric[]): DialMetric[] {
   return defaultFiltered.length > 0 ? [...defaultFiltered] : [...DEFAULT_METRICS_ORDER];
 }
 
-async function resolveTouchLayoutPath(): Promise<string> {
-  const candidates: string[] = [];
-  const seen = new Set<string>();
-
-  const addCandidate = (candidate: string): void => {
-    if (seen.has(candidate)) return;
-    seen.add(candidate);
-    candidates.push(candidate);
-  };
-
-  addCandidate(resolve(process.cwd(), TOUCH_LAYOUT_PATH));
-
-  const moduleDirectory = fileURLToPath(new URL(".", import.meta.url));
-  let currentDirectory = moduleDirectory;
-
-  for (let depth = 0; depth < 4; depth += 1) {
-    addCandidate(resolve(currentDirectory, TOUCH_LAYOUT_PATH));
-
-    const parentDirectory = resolve(currentDirectory, "..");
-    if (parentDirectory === currentDirectory) {
-      break;
-    }
-    currentDirectory = parentDirectory;
-  }
-
-  for (const candidate of candidates) {
-    try {
-      await access(candidate);
-      return candidate;
-    } catch {
-      continue;
-    }
-  }
-
-  const error = new Error(`Touch layout file not found. Checked paths: ${candidates.join(", ")}`);
-  error.name = "TouchLayoutNotFoundError";
-  throw error;
-}
-
 async function applyLayoutIfNeeded(state: DialContextState): Promise<void> {
   if (state.layoutApplied) {
     logger.trace("layout:skip", { context: state.id });
     return;
   }
   try {
-    const resolvedLayoutPath = await resolveTouchLayoutPath();
 
-    logger.trace("layout:apply", { context: state.id, layout: TOUCH_LAYOUT_PATH, resolvedLayoutPath });
+    logger.trace("layout:apply", { context: state.id, layout: TOUCH_LAYOUT_PATH });
 
     await state.action.setFeedbackLayout(TOUCH_LAYOUT_PATH);
 
     state.layoutApplied = true;
 
     logger.trace("layout:applied", { context: state.id });
+
   } catch (error) {
+
     const message = error instanceof Error ? error.message : String(error);
 
     logger.warn("layout:error", { context: state.id, message, layout: TOUCH_LAYOUT_PATH });
 
     state.layoutApplied = false;
 
-    if (error instanceof Error && error.name === "TouchLayoutNotFoundError") {
-      throw error;
-    }
   }
 
 }
