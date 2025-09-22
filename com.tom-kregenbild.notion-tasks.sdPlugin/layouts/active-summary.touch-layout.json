@@ -7,12 +7,12 @@
       "type": "text",
       "rect": [
         12,
-        10,
+        8,
         120,
-        24
+        18
       ],
       "font": {
-        "size": 18,
+        "size": 16,
         "weight": 600
       },
       "alignment": "center"
@@ -22,15 +22,33 @@
       "type": "text",
       "rect": [
         12,
-        42,
+        30,
         120,
-        44
+        28
       ],
       "font": {
-        "size": 32,
+        "size": 26,
         "weight": 700
       },
       "alignment": "center"
+    },
+    {
+      "key": "progress",
+      "type": "bar",
+      "rect": [
+        12,
+        64,
+        120,
+        14
+      ],
+      "background": "#1f2937",
+      "bar_fill_c": "#22c55e",
+      "border_w": 2,
+      "value": 0,
+      "range": {
+        "min": 0,
+        "max": 1
+      }
     }
   ]
 }

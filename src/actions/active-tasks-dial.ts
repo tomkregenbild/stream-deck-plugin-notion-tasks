@@ -29,6 +29,7 @@ const logger = streamDeck.logger.createScope("ActiveTasksDialAction");
 const INITIAL_FEEDBACK = {
   heading: { value: "Active Tasks" },
   value: { value: "Loading..." },
+  progress: 0,
 } as const;
 
 @action({ UUID: "com.tom-kregenbild.notion-tasks.active.dial" })
@@ -93,15 +94,31 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
   private async updateFeedback(state: ContextState, summary: TaskSummary): Promise<void> {
     const active = summary.active ?? 0;
     const total = summary.total ?? 0;
+    const completedRaw = summary.completed ?? Math.max(total - active, 0);
+    const completed = Math.min(Math.max(completedRaw, 0), total);
+    const ratio = total > 0 ? clampRatio(completed / total) : 0;
     const title = total > 0 ? `${active} active of ${total}` : `${active} active`;
 
-    logger.trace("feedback:update", { context: state.id, active, total });
+    logger.trace("feedback:update", {
+      context: state.id,
+      active,
+      total,
+      completed,
+      ratio,
+    });
 
     await state.action.setFeedback({
       heading: { value: "Active Tasks" },
       value: { value: `${active} / ${total}` },
+      progress: ratio,
     });
     await state.action.setTitle(title);
   }
 }
 
+function clampRatio(value: number): number {
+  if (Number.isNaN(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, value));
+}
