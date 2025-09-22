@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+  "id": "notion-active-summary",
+  "items": [
+    {
+      "key": "heading",
+      "type": "text",
+      "rect": [
+        12,
+        10,
+        120,
+        24
+      ],
+      "font": {
+        "size": 18,
+        "weight": 600
+      },
+      "alignment": "center"
+    },
+    {
+      "key": "value",
+      "type": "text",
+      "rect": [
+        12,
+        42,
+        120,
+        44
+      ],
+      "font": {
+        "size": 32,
+        "weight": 700
+      },
+      "alignment": "center"
+    }
+  ]
+}

@@ -14,8 +14,8 @@ const staticAssets = [
 		target: path.join(sdPlugin, "layouts", "notion-metrics.touch-layout.json"),
 	},
 	{
-		source: "layouts/debug-simple.touch-layout.json",
-		target: path.join(sdPlugin, "layouts", "debug-simple.touch-layout.json"),
+		source: "layouts/active-summary.touch-layout.json",
+		target: path.join(sdPlugin, "layouts", "active-summary.touch-layout.json"),
 	},
 ];
 

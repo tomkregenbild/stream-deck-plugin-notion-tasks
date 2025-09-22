@@ -47,19 +47,19 @@
 			]
 		},
 		{
-			"Name": "Layout Debug Dial",
-			"UUID": "com.tom-kregenbild.notion-tasks.debug.dial",
+			"Name": "Notion Active Tasks",
+			"UUID": "com.tom-kregenbild.notion-tasks.active.dial",
 			"Icon": "imgs/actionIcon",
-			"Tooltip": "Debug dial with custom layout",
+			"Tooltip": "Shows active vs total Notion tasks",
 			"PropertyInspectorPath": "ui/inspector.html",
 			"Controllers": [
 				"Encoder"
 			],
 			"Encoder": {
-				"layout": "layouts/debug-simple.touch-layout.json",
+				"layout": "layouts/active-summary.touch-layout.json",
 				"background": "touchscreen-background",
 				"TriggerDescription": {
-					"Rotate": "No-op"
+					"Rotate": "No action"
 				}
 			},
 			"States": [
