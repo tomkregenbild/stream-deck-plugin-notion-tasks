@@ -22,31 +22,6 @@
 			]
 		},
 		{
-			"Name": "Notion Today Metrics",
-			"UUID": "com.tom-kregenbild.notion-tasks.today.dial",
-			"Icon": "imgs/actionIcon",
-			"Tooltip": "Shows summary stats for today's Notion tasks on the dial",
-			"PropertyInspectorPath": "ui/inspector.html",
-			"Controllers": [
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "layouts/notion-metrics.touch-layout.json",
-				"background": "touchscreen-background",
-				"TriggerDescription": {
-					"Rotate": "Cycle metrics"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/key",
-					"Title": "",
-					"TitleAlignment": "middle",
-					"FontSize": 12
-				}
-			]
-		},
-		{
 			"Name": "Notion Active Tasks",
 			"UUID": "com.tom-kregenbild.notion-tasks.active.dial",
 			"Icon": "imgs/actionIcon",
