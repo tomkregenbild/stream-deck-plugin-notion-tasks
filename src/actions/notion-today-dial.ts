@@ -44,8 +44,8 @@ interface DialContextState {
 }
 
 
-const TOUCH_LAYOUT_PATH = "$B1";
-//const TOUCH_LAYOUT_PATH = "layouts/notion-metrics.touch-layout.json";
+//const TOUCH_LAYOUT_PATH = "$B1";
+const TOUCH_LAYOUT_PATH = "layouts/notion-metrics.touch-layout.json";
 const EXCLUDED_METRICS = new Set<DialMetric>(["total", "completed", "byProject", "byPillar"]);
 
 const logger = streamDeck.logger.createScope("NotionTodayDial");
