@@ -45,6 +45,31 @@
 					"FontSize": 12
 				}
 			]
+		},
+		{
+			"Name": "Layout Debug Dial",
+			"UUID": "com.tom-kregenbild.notion-tasks.debug.dial",
+			"Icon": "imgs/actionIcon",
+			"Tooltip": "Debug dial with custom layout",
+			"PropertyInspectorPath": "ui/inspector.html",
+			"Controllers": [
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/debug-simple.touch-layout.json",
+				"background": "touchscreen-background",
+				"TriggerDescription": {
+					"Rotate": "No-op"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/key",
+					"Title": "",
+					"TitleAlignment": "middle",
+					"FontSize": 12
+				}
+			]
 		}
 	],
 	"Category": "Notion Tasks",

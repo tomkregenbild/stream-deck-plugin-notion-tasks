@@ -13,6 +13,10 @@ const staticAssets = [
 		source: "layouts/notion-metrics.touch-layout.json",
 		target: path.join(sdPlugin, "layouts", "notion-metrics.touch-layout.json"),
 	},
+	{
+		source: "layouts/debug-simple.touch-layout.json",
+		target: path.join(sdPlugin, "layouts", "debug-simple.touch-layout.json"),
+	},
 ];
 
 /**
@@ -70,3 +74,4 @@ const config = {
 };
 
 export default config;
+

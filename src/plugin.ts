@@ -1,5 +1,6 @@
 import streamDeck, { LogLevel } from "@elgato/streamdeck";
 
+import { DebugDialAction } from "./actions/debug-dial";
 import { NotionTodayAction } from "./actions/notion-today";
 import { NotionTodayDialAction } from "./actions/notion-today-dial";
 
@@ -9,6 +10,7 @@ streamDeck.logger.setLevel(LogLevel.TRACE);
 // Register the Notion Today action.
 streamDeck.actions.registerAction(new NotionTodayAction());
 streamDeck.actions.registerAction(new NotionTodayDialAction());
+streamDeck.actions.registerAction(new DebugDialAction());
 
 // Finally, connect to the Stream Deck.
 streamDeck.connect();
