@@ -32,6 +32,7 @@ const INITIAL_FEEDBACK = {
   heading: { value: "Next Meeting" },
   value: { value: "Loading..." },
   value2: { value: "" },
+  time: { value: "" },
 } as const;
 
 @action({ UUID: "com.tom-kregenbild.notion-tasks.next-meeting.dial" })
@@ -148,18 +149,19 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
         heading: { value: "Next Meeting" },
         value: { value: "No meetings" },
         value2: { value: "" },
+        time: { value: "" },
       });
       await state.action.setTitle("No meetings");
       return;
     }
 
     const meetingNameParts = this.formatMeetingNameTwoLines(nextMeeting.title || "Untitled Meeting");
-    const timeInfo = this.formatTimeInfo(nextMeeting.due);
+    const timeDisplay = this.formatTimeDisplay(nextMeeting.due);
     
     logger.trace("feedback:update", {
       context: state.id,
       meetingName: meetingNameParts,
-      timeInfo,
+      timeDisplay,
       due: nextMeeting.due,
     });
 
@@ -167,9 +169,10 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
       heading: { value: "Next Meeting" },
       value: { value: meetingNameParts.line1 },
       value2: { value: meetingNameParts.line2 },
+      time: { value: timeDisplay },
     });
     
-    await state.action.setTitle(timeInfo || meetingNameParts.line1);
+    await state.action.setTitle(timeDisplay || meetingNameParts.line1);
   }
 
   private getNextMeetingWithTime(summary: any, settings: NotionSettings): NotionTask | undefined {
@@ -250,7 +253,7 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
     return { line1, line2 };
   }
 
-  private formatTimeInfo(due?: string): string {
+  private formatTimeDisplay(due?: string): string {
     if (!due) return "";
     
     const meetingTime = new Date(due);
@@ -260,11 +263,13 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
     const isToday = meetingTime.toDateString() === now.toDateString();
     
     if (isToday) {
+      // For today, just show the time
       return meetingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else {
-      // Show date and time for future dates
-      return meetingTime.toLocaleDateString([], { month: 'short', day: 'numeric' }) + 
-             " " + meetingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      // For other days, show date and time
+      const dateStr = meetingTime.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      const timeStr = meetingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return `${dateStr} ${timeStr}`;
     }
   }
 }

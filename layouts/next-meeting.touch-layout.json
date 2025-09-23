@@ -46,6 +46,21 @@
         "weight": 500
       },
       "alignment": "center"
+    },
+    {
+      "key": "time",
+      "type": "text",
+      "rect": [
+        8,
+        68,
+        128,
+        16
+      ],
+      "font": {
+        "size": 10,
+        "weight": 400
+      },
+      "alignment": "center"
     }
   ]
 }
