@@ -5,6 +5,7 @@ import {
   type WillAppearEvent,
   type WillDisappearEvent,
   type DidReceiveSettingsEvent,
+  type DialRotateEvent,
 } from "@elgato/streamdeck";
 
 import streamDeck from "@elgato/streamdeck";
@@ -24,6 +25,8 @@ interface ContextState {
   action: DialAction<NotionSettings>;
   layoutApplied: boolean;
   unsubscribe?: () => void;
+  currentMeetingIndex: number;
+  todaysMeetings: NotionTask[];
 }
 
 const logger = streamDeck.logger.createScope("NextMeetingDialAction");
@@ -45,6 +48,8 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
       id: action.id,
       action,
       layoutApplied: false,
+      currentMeetingIndex: 0,
+      todaysMeetings: [],
     };
     this.contexts.set(state.id, state);
 
@@ -76,6 +81,47 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
     logger.debug("onWillDisappear", { context: state.id });
     state.unsubscribe?.();
     this.contexts.delete(state.id);
+  }
+
+  override async onDialRotate(ev: DialRotateEvent<NotionSettings>): Promise<void> {
+    const state = this.contexts.get(ev.action.id);
+    if (!state) {
+      logger.debug("onDialRotate:missing", { context: ev.action.id });
+      return;
+    }
+
+    if (state.todaysMeetings.length === 0) {
+      logger.debug("onDialRotate:noMeetings", { context: state.id });
+      return;
+    }
+
+    if (state.todaysMeetings.length === 1) {
+      logger.debug("onDialRotate:singleMeeting", { context: state.id });
+      return;
+    }
+
+    const direction = ev.payload.ticks > 0 ? "next" : "previous";
+    const oldIndex = state.currentMeetingIndex;
+
+    if (direction === "next") {
+      // Turn right: go to next meeting
+      state.currentMeetingIndex = (state.currentMeetingIndex + 1) % state.todaysMeetings.length;
+    } else {
+      // Turn left: go to previous meeting
+      state.currentMeetingIndex = state.currentMeetingIndex === 0 
+        ? state.todaysMeetings.length - 1 
+        : state.currentMeetingIndex - 1;
+    }
+
+    logger.debug("onDialRotate", { 
+      context: state.id, 
+      direction, 
+      oldIndex, 
+      newIndex: state.currentMeetingIndex,
+      totalMeetings: state.todaysMeetings.length
+    });
+
+    await this.updateFeedbackWithCurrentMeeting(state);
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<NotionSettings>): Promise<void> {
@@ -142,9 +188,13 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
 
   private async updateFeedback(state: ContextState, summary: any): Promise<void> {
     const settings = await state.action.getSettings();
-    const nextMeeting = this.getNextMeetingWithTime(summary, settings);
+    const todaysMeetings = this.getTodaysMeetings(summary, settings);
     
-    if (!nextMeeting) {
+    // Update the state with today's meetings
+    state.todaysMeetings = todaysMeetings;
+    state.currentMeetingIndex = 0; // Reset to first meeting
+    
+    if (todaysMeetings.length === 0) {
       await state.action.setFeedback({
         heading: { value: "Next Meeting" },
         value: { value: "No meetings" },
@@ -155,20 +205,43 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
       return;
     }
 
-    const meetingNameParts = this.formatMeetingNameTwoLines(nextMeeting.title || "Untitled Meeting");
-    const timeDisplay = this.formatTimeDisplay(nextMeeting);
+    await this.updateFeedbackWithCurrentMeeting(state);
+  }
+
+  private async updateFeedbackWithCurrentMeeting(state: ContextState): Promise<void> {
+    if (state.todaysMeetings.length === 0) {
+      await state.action.setFeedback({
+        heading: { value: "Next Meeting" },
+        value: { value: "No meetings" },
+        value2: { value: "" },
+        time: { value: "" },
+      });
+      await state.action.setTitle("No meetings");
+      return;
+    }
+
+    const currentMeeting = state.todaysMeetings[state.currentMeetingIndex];
+    const meetingNameParts = this.formatMeetingNameTwoLines(currentMeeting.title || "Untitled Meeting");
+    const timeDisplay = this.formatTimeDisplay(currentMeeting);
+    
+    // Create heading text that shows current position if multiple meetings
+    const headingText = state.todaysMeetings.length > 1 
+      ? `Meeting ${state.currentMeetingIndex + 1}/${state.todaysMeetings.length}`
+      : "Next Meeting";
     
     logger.trace("feedback:update", {
       context: state.id,
+      meetingIndex: state.currentMeetingIndex,
+      totalMeetings: state.todaysMeetings.length,
       meetingName: meetingNameParts,
       timeDisplay,
-      startTime: nextMeeting.startTime,
-      endTime: nextMeeting.endTime,
-      due: nextMeeting.due,
+      startTime: currentMeeting.startTime,
+      endTime: currentMeeting.endTime,
+      due: currentMeeting.due,
     });
 
     await state.action.setFeedback({
-      heading: { value: "Next Meeting" },
+      heading: { value: headingText },
       value: { value: meetingNameParts.line1 },
       value2: { value: meetingNameParts.line2 },
       time: { value: timeDisplay },
@@ -177,13 +250,16 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
     await state.action.setTitle(timeDisplay || meetingNameParts.line1);
   }
 
-  private getNextMeetingWithTime(summary: any, settings: NotionSettings): NotionTask | undefined {
-    if (!summary || !summary.activeTasks) return undefined;
+  private getTodaysMeetings(summary: any, settings: NotionSettings): NotionTask[] {
+    if (!summary || !summary.activeTasks) return [];
     
     const meetingPriorityValue = settings.meetingPriority || "Meeting";
     
-    // Filter tasks that are meetings with time specified and not yet passed
+    // Filter tasks that are meetings with time specified and are today or future
     const now = new Date();
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    
     const meetings = summary.activeTasks.filter((task: NotionTask) => {
       // Check if task has the meeting priority value
       if (!task.priority || task.priority !== meetingPriorityValue) {
@@ -196,21 +272,19 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
         return false;
       }
       
-      // Check if the meeting hasn't passed yet
+      // Check if the meeting is today or in the future
       const meetingTime = new Date(meetingStart);
-      return meetingTime > now;
+      return meetingTime >= startOfToday;
     });
     
-    // Sort by due date and return the earliest
-    if (meetings.length === 0) return undefined;
-    
+    // Sort by due date (earliest first)
     meetings.sort((a: NotionTask, b: NotionTask) => {
       const dateA = new Date(a.startTime || a.due!);
       const dateB = new Date(b.startTime || b.due!);
       return dateA.getTime() - dateB.getTime();
     });
     
-    return meetings[0];
+    return meetings;
   }
 
   private formatMeetingNameTwoLines(name: string): { line1: string; line2: string } {
