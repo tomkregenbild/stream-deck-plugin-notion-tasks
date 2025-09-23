@@ -1,8 +1,9 @@
 {
     "scripts": {
-        "build": "rollup -c",
+        "build": "npm run generate-icons && rollup -c",
         "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart com.tom-kregenbild.notion-tasks\"",
-        "test": "vitest run"
+        "test": "vitest run",
+        "generate-icons": "node scripts/generate-icons.mjs"
     },
     "type": "module",
     "devDependencies": {
@@ -14,11 +15,13 @@
         "@tsconfig/node20": "^20.1.2",
         "@types/node": "~20.15.0",
         "rollup": "^4.0.2",
+        "sharp": "^0.34.4",
         "tslib": "^2.6.2",
         "typescript": "^5.2.2",
         "vitest": "^1.6.0"
     },
     "dependencies": {
+        "@elgato/icons": "^1.0.3",
         "@elgato/streamdeck": "^1.0.0"
     }
 }
