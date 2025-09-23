@@ -32,10 +32,14 @@ async function generateIcons() {
 }
 
 async function generateIcon(svgIcon, outputPath, size) {
-    // Create SVG with the icon
+    // Extract the path content from the SVG icon
+    const pathMatch = svgIcon.match(/<path[^>]*d="([^"]*)"[^>]*>/);
+    const pathData = pathMatch ? pathMatch[1] : '';
+    
+    // Create SVG with white fill for better visibility
     const svgContent = `
         <svg width="${size}" height="${size}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <g fill="currentColor">${svgIcon}</g>
+            <path d="${pathData}" fill="#FFFFFF" fill-rule="evenodd" clip-rule="evenodd"/>
         </svg>
     `;
     
@@ -48,10 +52,14 @@ async function generateIcon(svgIcon, outputPath, size) {
 }
 
 async function generateCategoryIcon(svgIcon, outputPath, size) {
+    // Extract the path content from the SVG icon
+    const pathMatch = svgIcon.match(/<path[^>]*d="([^"]*)"[^>]*>/);
+    const pathData = pathMatch ? pathMatch[1] : '';
+    
     // Create SVG with white foreground and transparent background for category icon
     const svgContent = `
         <svg width="${size}" height="${size}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <g fill="#FFFFFF">${svgIcon}</g>
+            <path d="${pathData}" fill="#FFFFFF" fill-rule="evenodd" clip-rule="evenodd"/>
         </svg>
     `;
     
