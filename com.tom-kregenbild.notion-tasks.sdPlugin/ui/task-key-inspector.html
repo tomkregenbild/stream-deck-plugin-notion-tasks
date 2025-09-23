@@ -37,6 +37,13 @@
         <sdpi-item-description>Select the Due Date property from your Notion database.</sdpi-item-description>
     </sdpi-item>
 
+    <sdpi-item label="Priority Property">
+        <sdpi-select setting="priorityProp" disabled>
+            <option value="">Loading properties...</option>
+        </sdpi-select>
+        <sdpi-item-description>Select the Priority property from your Notion database (optional - enables color-coded buttons).</sdpi-item-description>
+    </sdpi-item>
+
     <sdpi-item label="Task Slot">
         <sdpi-select setting="position">
             <option value="1">Task Slot 1</option>
@@ -76,20 +83,39 @@
                 const statusSelect = document.querySelector('sdpi-select[setting="statusProp"]');
                 const doneSelect = document.querySelector('sdpi-select[setting="doneValue"]');
                 const dateSelect = document.querySelector('sdpi-select[setting="dateProp"]');
+                const prioritySelect = document.querySelector('sdpi-select[setting="priorityProp"]');
 
                 statusSelect.innerHTML = `<option value="">Error: ${actualSettings._dbPropertiesError}</option>`;
                 dateSelect.innerHTML = `<option value="">Error: ${actualSettings._dbPropertiesError}</option>`;
                 doneSelect.innerHTML = `<option value="">Error loading values</option>`;
+                prioritySelect.innerHTML = `<option value="">Error: ${actualSettings._dbPropertiesError}</option>`;
 
                 statusSelect.disabled = true;
                 dateSelect.disabled = true;
                 doneSelect.disabled = true;
+                prioritySelect.disabled = true;
                 return;
             }
 
             const properties = actualSettings._dbProperties;
             if (!properties) {
-                console.log('PI: No properties found, triggering fetch');
+                console.log('PI: No properties found, setting loading state and triggering fetch');
+                // Set loading state
+                const statusSelect = document.querySelector('sdpi-select[setting="statusProp"]');
+                const doneSelect = document.querySelector('sdpi-select[setting="doneValue"]');
+                const dateSelect = document.querySelector('sdpi-select[setting="dateProp"]');
+                const prioritySelect = document.querySelector('sdpi-select[setting="priorityProp"]');
+
+                statusSelect.innerHTML = '<option value="">Loading Properties...</option>';
+                dateSelect.innerHTML = '<option value="">Loading Properties...</option>';
+                doneSelect.innerHTML = '<option value="">Select a Status Property first</option>';
+                prioritySelect.innerHTML = '<option value="">Loading Properties...</option>';
+
+                statusSelect.disabled = true;
+                dateSelect.disabled = true;
+                doneSelect.disabled = true;
+                prioritySelect.disabled = true;
+
                 // Trigger fetching properties if we don't have them
                 console.log('PI: Available streamDeckClient methods:', Object.getOwnPropertyNames(streamDeckClient));
                 
@@ -114,16 +140,19 @@
             const statusSelect = document.querySelector('sdpi-select[setting="statusProp"]');
             const doneSelect = document.querySelector('sdpi-select[setting="doneValue"]');
             const dateSelect = document.querySelector('sdpi-select[setting="dateProp"]');
+            const prioritySelect = document.querySelector('sdpi-select[setting="priorityProp"]');
 
             // Clear loading state
             statusSelect.innerHTML = '';
             dateSelect.innerHTML = '';
             doneSelect.innerHTML = '';
+            prioritySelect.innerHTML = '';
 
             // Add default options
             statusSelect.appendChild(new Option('Select a status property...', ''));
             dateSelect.appendChild(new Option('Select a date property...', ''));
             doneSelect.appendChild(new Option('Select a done value...', ''));
+            prioritySelect.appendChild(new Option('Select a priority property...', ''));
 
             // Populate properties
             for (const [name, prop] of Object.entries(properties)) {
@@ -139,17 +168,22 @@
                 if (prop.type === 'date') {
                     dateSelect.appendChild(new Option(name, name));
                 }
+                if (prop.type === 'select') {
+                    prioritySelect.appendChild(new Option(name, name));
+                }
             }
 
             // Enable the selects
             statusSelect.disabled = false;
             dateSelect.disabled = false;
             doneSelect.disabled = false;
+            prioritySelect.disabled = false;
 
             // Set current values if they exist
             if (actualSettings.statusProp) statusSelect.value = actualSettings.statusProp;
             if (actualSettings.dateProp) dateSelect.value = actualSettings.dateProp;
             if (actualSettings.doneValue) doneSelect.value = actualSettings.doneValue;
+            if (actualSettings.priorityProp) prioritySelect.value = actualSettings.priorityProp;
 
             // Add event listener for status property changes
             statusSelect.addEventListener('change', (event) => {

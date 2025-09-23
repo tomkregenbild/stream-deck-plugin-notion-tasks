@@ -8,7 +8,7 @@ export interface NotionDatabaseResponse {
   }>;
 }
 
-class NotionClient {
+export class NotionClient {
   private buildHeaders(token?: string) {
     return {
       Authorization: `Bearer ${token}`,

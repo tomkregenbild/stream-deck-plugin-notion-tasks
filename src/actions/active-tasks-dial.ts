@@ -4,11 +4,13 @@ import {
   type DialAction,
   type WillAppearEvent,
   type WillDisappearEvent,
+  type DidReceiveSettingsEvent,
 } from "@elgato/streamdeck";
 
 import streamDeck from "@elgato/streamdeck";
 
 import { type TaskSummary } from "../notion/task-helpers";
+import { NotionClient } from "../notion/database-helpers";
 import {
   getNotionTodaySummary,
   subscribeToNotionSummary,
@@ -73,6 +75,52 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     logger.debug("onWillDisappear", { context: state.id });
     state.unsubscribe?.();
     this.contexts.delete(state.id);
+  }
+
+  override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<NotionSettings>): Promise<void> {
+    const action = ev.action as unknown as DialAction<NotionSettings>;
+    const settings = ev.payload.settings ?? {};
+    
+    logger.debug("Received settings update", { 
+      context: action.id,
+      hasTrigger: !!settings._triggerPropertyFetch,
+      hasToken: !!settings.token,
+      hasDb: !!settings.db,
+      hasProperties: !!settings._dbProperties
+    });
+    
+    // Check if this is a property fetch trigger
+    if (settings._triggerPropertyFetch && settings.token && settings.db) {
+      logger.debug("Settings-triggered property fetch detected", { 
+        context: action.id,
+        trigger: settings._triggerPropertyFetch
+      });
+      
+      try {
+        const client = new NotionClient();
+        const dbProperties = await client.fetchDatabaseProperties(settings.db, settings.token);
+        
+        await action.setSettings({
+          ...settings,
+          _dbProperties: dbProperties.properties,
+          _dbPropertiesError: undefined,
+          _triggerPropertyFetch: undefined // Clear the trigger
+        });
+        logger.debug("Properties fetched via settings trigger", { context: action.id });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error("Failed to fetch properties via settings trigger", { 
+          context: action.id,
+          error: errorMessage
+        });
+        
+        await action.setSettings({
+          ...settings,
+          _dbPropertiesError: errorMessage,
+          _triggerPropertyFetch: undefined // Clear the trigger
+        });
+      }
+    }
   }
 
   private async ensureLayout(state: ContextState): Promise<void> {
