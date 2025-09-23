@@ -6,25 +6,25 @@
       "key": "heading",
       "type": "text",
       "rect": [
-        8,
+        4,
         6,
-        128,
+        136,
         16
       ],
       "font": {
         "size": 13,
-        "weight": 400
+        "weight": 300
       },
       "alignment": "center",
-      "color": "#f87171"
+      "color": "#fbb6ce"
     },
     {
       "key": "value",
       "type": "text",
       "rect": [
-        8,
+        4,
         24,
-        128,
+        136,
         18
       ],
       "font": {
@@ -38,9 +38,9 @@
       "key": "value2",
       "type": "text",
       "rect": [
-        8,
+        4,
         42,
-        128,
+        136,
         18
       ],
       "font": {
@@ -54,9 +54,9 @@
       "key": "time",
       "type": "text",
       "rect": [
-        8,
+        4,
         64,
-        128,
+        136,
         18
       ],
       "font": {
