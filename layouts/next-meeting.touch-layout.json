@@ -16,7 +16,7 @@
         "weight": 400
       },
       "alignment": "center",
-      "color": "#9ca3af"
+      "color": "#f87171"
     },
     {
       "key": "value",
@@ -64,7 +64,7 @@
         "weight": 500
       },
       "alignment": "center",
-      "color": "#60a5fa"
+      "color": "#9ca3af"
     }
   ]
 }
