@@ -323,20 +323,24 @@ class TaskCoordinator {
 
 
   private assignPosition(id: string, desired?: number): number {
+    // If user specified a position, respect it
+    if (desired && desired > 0 && desired <= 8) {
+      return desired;
+    }
+    
+    // For unassigned slots, find the next available one
     const used = new Set<number>();
     for (const [contextId, context] of this.contexts) {
       if (contextId === id) continue;
       const pos = context.normalized.position;
       if (pos && pos > 0) used.add(pos);
     }
-    if (desired && desired > 0 && !used.has(desired)) {
-      return desired;
-    }
+    
     let candidate = 1;
-    while (used.has(candidate)) {
+    while (used.has(candidate) && candidate <= 8) {
       candidate += 1;
     }
-    return candidate;
+    return candidate <= 8 ? candidate : 1;
   }
 }
 

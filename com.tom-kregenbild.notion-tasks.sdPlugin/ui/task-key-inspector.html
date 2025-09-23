@@ -28,9 +28,18 @@
         <sdpi-textfield setting="dateProp" default="Due"></sdpi-textfield>
     </sdpi-item>
 
-    <sdpi-item label="Task Slot Number">
-        <sdpi-range setting="position" min="1" max="8" step="1" showlabels></sdpi-range>
-        <sdpi-item-description>Assign a slot to control which task appears on this key (1-8).</sdpi-item-description>
+    <sdpi-item label="Task Slot">
+        <sdpi-select setting="position">
+            <option value="1">Task Slot 1</option>
+            <option value="2">Task Slot 2</option>
+            <option value="3">Task Slot 3</option>
+            <option value="4">Task Slot 4</option>
+            <option value="5">Task Slot 5</option>
+            <option value="6">Task Slot 6</option>
+            <option value="7">Task Slot 7</option>
+            <option value="8">Task Slot 8</option>
+        </sdpi-select>
+        <sdpi-item-description>Select which task slot (1-8) should appear on this key. Multiple keys can show the same task by using the same slot number.</sdpi-item-description>
     </sdpi-item>
     <script>
         const { streamDeckClient } = SDPIComponents;
