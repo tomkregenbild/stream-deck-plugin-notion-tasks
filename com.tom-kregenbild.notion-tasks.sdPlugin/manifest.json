@@ -16,7 +16,7 @@
 				}
 			],
 			"SupportedInMultiActions": false,
-			"PropertyInspectorPath": "ui/inspector.html",
+			"PropertyInspectorPath": "ui/task-key-inspector.html",
 			"Controllers": [
 				"Keypad"
 			]
@@ -26,7 +26,7 @@
 			"UUID": "com.tom-kregenbild.notion-tasks.active.dial",
 			"Icon": "imgs/actionIcon",
 			"Tooltip": "Shows active vs total Notion tasks",
-			"PropertyInspectorPath": "ui/inspector.html",
+			"PropertyInspectorPath": "ui/dial-inspector.html",
 			"Controllers": [
 				"Encoder"
 			],

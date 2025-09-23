@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <title>Notion Tasks Settings</title>
+    <meta charset="utf-8" />
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Notion Token">
+        <sdpi-password setting="token"></sdpi-password>
+        <sdpi-item-description>Create an internal integration and paste the secret token.</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Database ID">
+        <sdpi-textfield setting="db"></sdpi-textfield>
+        <sdpi-item-description>Paste the database identifier (32 characters, without spaces).</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Status Property">
+        <sdpi-textfield setting="statusProp" default="Status"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="Done Status Value">
+        <sdpi-textfield setting="doneValue" default="Done"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="Due Date Property">
+        <sdpi-textfield setting="dateProp" default="Due"></sdpi-textfield>
+    </sdpi-item>
+
+    <script>
+        const { streamDeckClient } = SDPIComponents;
+    </script>
+</body>
+</html>
