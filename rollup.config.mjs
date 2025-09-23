@@ -10,10 +10,6 @@ const isWatching = !!process.env.ROLLUP_WATCH;
 const sdPlugin = "com.tom-kregenbild.notion-tasks.sdPlugin";
 const staticAssets = [
 	{
-		source: "layouts/notion-metrics.touch-layout.json",
-		target: path.join(sdPlugin, "layouts", "notion-metrics.touch-layout.json"),
-	},
-	{
 		source: "layouts/active-summary.touch-layout.json",
 		target: path.join(sdPlugin, "layouts", "active-summary.touch-layout.json"),
 	},
