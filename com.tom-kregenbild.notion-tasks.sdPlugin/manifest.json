@@ -57,7 +57,7 @@
 			],
 			"Encoder": {
 				"layout": "layouts/next-meeting.touch-layout.json",
-				"background": "touchscreen-background",
+				"background": "touchscreen-background-white",
 				"TriggerDescription": {
 					"Rotate": "No action"
 				}
