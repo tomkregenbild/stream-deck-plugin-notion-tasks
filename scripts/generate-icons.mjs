@@ -28,11 +28,6 @@ async function generateIcons() {
     await generateIcon(iconLogoNotion, path.join(imgsDir, "actionIcon.png"), 72);
     await generateIcon(iconLogoNotion, path.join(imgsDir, "actionIcon@2x.png"), 144);
     
-    // Generate white background images for the next meeting dial
-    console.log("Generating white background images...");
-    await generateWhiteBackground(path.join(pluginDir, "touchscreen-background-white.png"), 144);
-    await generateWhiteBackground(path.join(pluginDir, "touchscreen-background-white@2x.png"), 288);
-    
     console.log("Icons generated successfully!");
 }
 
@@ -72,22 +67,6 @@ async function generateCategoryIcon(svgIcon, outputPath, size) {
         .resize(size, size)
         .png()
         .toFile(outputPath);
-    
-    console.log(`Generated: ${outputPath}`);
-}
-
-async function generateWhiteBackground(outputPath, size) {
-    // Create a simple white background image
-    await sharp({
-        create: {
-            width: size,
-            height: size,
-            channels: 3,
-            background: { r: 255, g: 255, b: 255 }
-        }
-    })
-    .png()
-    .toFile(outputPath);
     
     console.log(`Generated: ${outputPath}`);
 }
