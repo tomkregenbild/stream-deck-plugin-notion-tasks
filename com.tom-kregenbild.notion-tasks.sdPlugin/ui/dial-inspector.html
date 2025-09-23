@@ -17,19 +17,99 @@
     </sdpi-item>
 
     <sdpi-item label="Status Property">
-        <sdpi-textfield setting="statusProp" default="Status"></sdpi-textfield>
+        <sdpi-select setting="statusProp" disabled>
+            <option value="">Loading properties...</option>
+        </sdpi-select>
+        <sdpi-item-description>Select the Status property from your Notion database.</sdpi-item-description>
     </sdpi-item>
 
     <sdpi-item label="Done Status Value">
-        <sdpi-textfield setting="doneValue" default="Done"></sdpi-textfield>
+        <sdpi-select setting="doneValue" disabled>
+            <option value="">Loading values...</option>
+        </sdpi-select>
+        <sdpi-item-description>Select which status value represents a completed task.</sdpi-item-description>
     </sdpi-item>
 
     <sdpi-item label="Due Date Property">
-        <sdpi-textfield setting="dateProp" default="Due"></sdpi-textfield>
+        <sdpi-select setting="dateProp" disabled>
+            <option value="">Loading properties...</option>
+        </sdpi-select>
+        <sdpi-item-description>Select the Due Date property from your Notion database.</sdpi-item-description>
     </sdpi-item>
 
     <script>
         const { streamDeckClient } = SDPIComponents;
+
+        function updateDropdowns(settings) {
+            if (!settings?.token || !settings?.db) {
+                return;
+            }
+
+            const properties = settings._dbProperties;
+            if (!properties) {
+                // Trigger fetching properties if we don't have them
+                streamDeckClient.sendToPlugin({ event: 'fetchDatabaseProperties' });
+                return;
+            }
+
+            // Get the select elements
+            const statusSelect = document.querySelector('sdpi-select[setting="statusProp"]');
+            const doneSelect = document.querySelector('sdpi-select[setting="doneValue"]');
+            const dateSelect = document.querySelector('sdpi-select[setting="dateProp"]');
+
+            // Clear loading state
+            statusSelect.innerHTML = '';
+            dateSelect.innerHTML = '';
+            doneSelect.innerHTML = '';
+
+            // Add default options
+            statusSelect.appendChild(new Option('Select a status property...', ''));
+            dateSelect.appendChild(new Option('Select a date property...', ''));
+            doneSelect.appendChild(new Option('Select a done value...', ''));
+
+            // Populate properties
+            for (const [name, prop] of Object.entries(properties)) {
+                if (prop.type === 'status') {
+                    statusSelect.appendChild(new Option(name, name));
+                    // When status property is selected, populate done values
+                    if (name === settings.statusProp && prop.status?.options) {
+                        prop.status.options.forEach(option => {
+                            doneSelect.appendChild(new Option(option.name, option.name));
+                        });
+                    }
+                }
+                if (prop.type === 'date') {
+                    dateSelect.appendChild(new Option(name, name));
+                }
+            }
+
+            // Enable the selects
+            statusSelect.disabled = false;
+            dateSelect.disabled = false;
+            doneSelect.disabled = false;
+
+            // Set current values if they exist
+            if (settings.statusProp) statusSelect.value = settings.statusProp;
+            if (settings.dateProp) dateSelect.value = settings.dateProp;
+            if (settings.doneValue) doneSelect.value = settings.doneValue;
+
+            // Add event listener for status property changes
+            statusSelect.addEventListener('change', (event) => {
+                const selectedProp = properties[event.target.value];
+                doneSelect.innerHTML = '<option value="">Select a done value...</option>';
+                if (selectedProp?.status?.options) {
+                    selectedProp.status.options.forEach(option => {
+                        doneSelect.appendChild(new Option(option.name, option.name));
+                    });
+                }
+            });
+        }
+
+        // Listen for settings changes
+        streamDeckClient.on('didReceiveSettings', (settings) => updateDropdowns(settings));
+        
+        // Initial update
+        streamDeckClient.getSettings().then(updateDropdowns);
     </script>
 </body>
 </html>

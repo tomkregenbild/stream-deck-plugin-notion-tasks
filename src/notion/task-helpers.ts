@@ -14,8 +14,8 @@ export interface NotionTask {
   status?: string;
   pillar?: string;
   project?: string;
-  due?: string;
   url?: string;
+  due?: string;
 }
 
 export type MetricKey = "total" | "completed" | "active" | "nextMeeting" | "byPillar" | "byProject";

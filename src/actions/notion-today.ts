@@ -26,13 +26,6 @@ import {
   type MetricKey,
 } from "../notion/task-helpers";
 
-const DEFAULT_STATUS_PROPERTY = "Status";
-const DEFAULT_DONE_VALUE = "Done";
-const DEFAULT_DATE_PROPERTY = "Due";
-const DEFAULT_PRIORITY_PROPERTY = "Priority";
-const DEFAULT_PILLAR_PROPERTY = "Pillar";
-const DEFAULT_PROJECT_PROPERTY = "Project";
-const DEFAULT_MEETING_PRIORITY_OVERRIDE = DEFAULT_MEETING_PRIORITY;
 const TITLE_MAX_LINES = 3;
 const TITLE_MAX_CHARS = 14;
 
@@ -48,20 +41,24 @@ export type NotionSettings = {
   meetingPriority?: string;
   metricsOrder?: string | string[];
   position?: number | string;
+  _dbProperties?: Record<string, { type: string; status?: { options: Array<{ name: string }> } }>;
+  _dbPropertiesError?: string;
+  _triggerPropertyFetch?: number;
 };
 
 interface NormalizedSettings {
   token?: string;
   db?: string;
-  statusProp: string;
-  doneValue: string;
-  dateProp: string;
-  priorityProp: string;
-  pillarProp: string;
-  projectProp: string;
+  statusProp?: string;
+  doneValue?: string;
+  dateProp?: string;
+  priorityProp?: string;
+  pillarProp?: string;
+  projectProp?: string;
   meetingPriority: string;
   metricsOrder: MetricKey[];
   position?: number;
+  _dbProperties?: Record<string, { type: string; status?: { options: Array<{ name: string }> } }>;
 }
 
 type KeyVisualDescriptor = {
@@ -86,6 +83,9 @@ interface ContextState {
 }
 
 type SummaryListener = (summary: TaskSummary | undefined) => void;
+
+const logger = streamDeck.logger.createScope("NotionTodayAction");
+const notionLogger = streamDeck.logger.createScope("NotionClient");
 
 let sharedCoordinator: TaskCoordinator | undefined;
 const summaryListeners = new Set<SummaryListener>();
@@ -113,6 +113,49 @@ export class NotionTodayAction extends SingletonAction<NotionSettings> {
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<NotionSettings>): Promise<void> {
     const action = ev.action as unknown as KeyAction<NotionSettings>;
+    const settings = ev.payload.settings ?? {};
+    
+    logger.debug("Received settings update", { 
+      context: action.id,
+      hasTrigger: !!settings._triggerPropertyFetch,
+      hasToken: !!settings.token,
+      hasDb: !!settings.db,
+      hasProperties: !!settings._dbProperties
+    });
+    
+    // Check if this is a property fetch trigger
+    if (settings._triggerPropertyFetch && settings.token && settings.db) {
+      logger.debug("Settings-triggered property fetch detected", { 
+        context: action.id,
+        trigger: settings._triggerPropertyFetch
+      });
+      
+      try {
+        const client = new NotionClient();
+        const dbProperties = await client.fetchDatabaseProperties(settings.db, settings.token);
+        
+        await action.setSettings({
+          ...settings,
+          _dbProperties: dbProperties.properties,
+          _dbPropertiesError: undefined,
+          _triggerPropertyFetch: undefined // Clear the trigger
+        });
+        logger.debug("Properties fetched via settings trigger", { context: action.id });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error("Failed to fetch properties via settings trigger", { 
+          context: action.id,
+          error: errorMessage
+        });
+        
+        await action.setSettings({
+          ...settings,
+          _dbPropertiesError: errorMessage,
+          _triggerPropertyFetch: undefined // Clear the trigger
+        });
+      }
+    }
+    
     await this.coordinator.updateSettings(action.id, ev.payload.settings ?? {});
   }
 
@@ -123,14 +166,76 @@ export class NotionTodayAction extends SingletonAction<NotionSettings> {
 
   override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, NotionSettings>): Promise<void> {
     const action = ev.action as unknown as KeyAction<NotionSettings>;
-    const update = isJsonObject(ev.payload) ? (ev.payload as Partial<NotionSettings>) : undefined;
-    if (!update || Object.keys(update).length === 0) {
-      return;
+    
+    if (isJsonObject(ev.payload)) {
+      if (ev.payload.event === 'fetchDatabaseProperties') {
+        logger.debug("Handling fetchDatabaseProperties event", { 
+          context: action.id,
+          payload: ev.payload
+        });
+
+        const settings = await action.getSettings<NotionSettings>();
+        logger.debug("Current settings", { 
+          context: action.id,
+          hasToken: !!settings.token,
+          hasDb: !!settings.db,
+          statusProp: settings.statusProp,
+          dateProp: settings.dateProp,
+          hasProperties: !!settings._dbProperties
+        });
+        
+        if (!settings.token || !settings.db) {
+          logger.error("Missing configuration", { 
+            context: action.id,
+            hasToken: !!settings.token,
+            hasDb: !!settings.db
+          });
+          throw new Error('Missing token or database ID');
+        }
+
+        try {
+          logger.debug("Fetching properties", { context: action.id, db: settings.db });
+          const client = new NotionClient();
+          const dbProperties = await client.fetchDatabaseProperties(settings.db, settings.token);
+          
+          logger.debug("Received properties", { 
+            context: action.id,
+            propertyCount: Object.keys(dbProperties.properties).length,
+            properties: Object.keys(dbProperties.properties)
+          });
+          
+          await action.setSettings({
+            ...settings,
+            _dbProperties: dbProperties.properties,
+            _dbPropertiesError: undefined // Clear any previous error
+          });
+          logger.debug("Properties updated in settings", { context: action.id });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.error("Failed to fetch database properties", { 
+            context: action.id,
+            error: errorMessage,
+            stack: error instanceof Error ? error.stack : undefined
+          });
+          
+          // Store error in settings so UI can handle it
+          await action.setSettings({
+            ...settings,
+            _dbPropertiesError: errorMessage
+          });
+        }
+        return;
+      }
+
+      // Handle other updates
+      const update = ev.payload as Partial<NotionSettings>;
+      if (Object.keys(update).length > 0) {
+        const current = await action.getSettings<NotionSettings>();
+        const merged: NotionSettings = { ...current, ...update };
+        await action.setSettings(merged);
+        await this.coordinator.updateSettings(action.id, merged);
+      }
     }
-    const current = await action.getSettings<NotionSettings>();
-    const merged: NotionSettings = { ...current, ...update };
-    await action.setSettings(merged);
-    await this.coordinator.updateSettings(action.id, merged);
   }
 }
 
@@ -190,7 +295,26 @@ class TaskCoordinator {
     }
     const settings = this.primarySettings();
     if (!settings?.token || !settings?.db) {
+      logger.error("Missing token or database ID");
       await state.action.showAlert();
+      return;
+    }
+
+    // Validate required properties
+    if (!settings.statusProp || !settings.doneValue) {
+      logger.error("Status property or done value not configured", {
+        statusProp: settings.statusProp,
+        doneValue: settings.doneValue
+      });
+      this.lastError = "Please configure the status property and done value in settings";
+      await this.paint(state);
+      return;
+    }
+
+    if (!settings.dateProp) {
+      logger.error("Date property not configured");
+      this.lastError = "Please configure the date property in settings";
+      await this.paint(state);
       return;
     }
 
@@ -199,21 +323,28 @@ class TaskCoordinator {
       await state.action.showOk();
       await this.refresh(true);
     } catch (error) {
-      streamDeck.logger.error("Failed to mark Notion task as complete", error);
-      await state.action.showAlert();
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error("Failed to mark Notion task as complete", { error: errorMessage });
+      this.lastError = `Failed to update task: ${errorMessage}`;
+      await this.paint(state);
     }
   }
 
   private async refresh(force = false): Promise<void> {
+    logger.debug("Starting refresh", { force, contexts: this.contexts.size });
+    
     if (this.contexts.size === 0) {
+      logger.debug("No contexts, clearing state");
       this.tasks = [];
       this.summary = undefined;
       this.lastError = undefined;
       notifySummaryListeners(this.summary);
       return;
     }
+
     const settings = this.primarySettings();
     if (!settings) {
+      logger.debug("No valid settings, clearing state");
       this.tasks = [];
       this.summary = undefined;
       this.lastError = undefined;
@@ -222,19 +353,36 @@ class TaskCoordinator {
       return;
     }
 
+    logger.debug("Using settings", { 
+      token: settings.token ? "present" : "missing",
+      db: settings.db,
+      dateProp: settings.dateProp,
+      statusProp: settings.statusProp,
+      force 
+    });
+
     const cacheKey = settings.cacheKey;
     const existing = this.pendingRefreshes.get(cacheKey);
     if (existing && !force) {
+      logger.debug("Using existing refresh promise");
       await existing;
       return;
     }
 
     const refreshPromise = (async () => {
       try {
+        logger.debug("Fetching tasks from Notion");
         const { tasks, error } = await this.notion.fetchTodayTasks(settings, force);
+        
+        if (error) {
+          logger.error("Error fetching tasks", { error });
+        } else {
+          logger.debug("Building task summary", { taskCount: tasks.length });
+        }
+
         const summary = buildTaskSummary(
           tasks,
-          settings.doneValue,
+          settings.doneValue ?? "Done", // Fallback to "Done" if doneValue is not set
           settings.meetingPriority,
           settings.metricsOrder,
         );
@@ -242,11 +390,17 @@ class TaskCoordinator {
         this.summary = summary;
         this.lastError = error;
         notifySummaryListeners(this.summary);
+
+        logger.debug("Task summary updated", { 
+          active: summary.active,
+          total: summary.total,
+          error: this.lastError
+        });
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : String(error);
         this.tasks = [];
         this.summary = undefined;
-        streamDeck.logger.error("Notion fetch failed", error);
+        logger.error("Notion fetch failed", { error });
         notifySummaryListeners(this.summary);
       }
       await this.paintAll();
@@ -273,20 +427,36 @@ class TaskCoordinator {
 
   private async paint(state: ContextState, task?: NotionTask): Promise<void> {
     state.currentTask = task;
+    logger.debug("Painting state", { 
+      context: state.id,
+      hasToken: !!state.normalized.token,
+      hasDb: !!state.normalized.db,
+      hasError: !!this.lastError,
+      hasTask: !!task
+    });
 
     let descriptor: KeyVisualDescriptor;
     let title: string;
 
     if (!state.normalized.token || !state.normalized.db) {
+      logger.debug("Showing setup state", { context: state.id });
       descriptor = BASE_VISUALS.setup;
       title = wrapText("Configure Notion");
     } else if (this.lastError) {
+      logger.warn("Showing error state", { context: state.id, error: this.lastError });
       descriptor = BASE_VISUALS.error;
       title = wrapText(`Error ${this.lastError}`);
     } else if (!task) {
+      logger.debug("Showing empty state", { context: state.id });
       descriptor = BASE_VISUALS.empty;
       title = wrapText("No tasks for today");
     } else {
+      logger.debug("Showing task", { 
+        context: state.id,
+        taskId: task.id,
+        title: task.title,
+        priority: task.priority
+      });
       descriptor = getTaskVisual(task.priority);
       title = formatTaskTitle(task.title);
     }
@@ -350,6 +520,68 @@ class NotionClient {
   private lastFetch?: number;
   private inflight?: Promise<{ tasks: NotionTask[]; error?: string }>;
 
+  async fetchDatabaseProperties(db: string, token: string): Promise<{ properties: Record<string, { type: string; status?: { options: Array<{ name: string }> } }> }> {
+    if (!token) {
+      notionLogger.error("Missing Notion token");
+      throw new Error("Missing Notion token");
+    }
+
+    if (!db || !/^[a-f0-9-]{32,36}$/i.test(db.replace(/-/g, ''))) {
+      notionLogger.error("Invalid database ID format:", db);
+      throw new Error("Invalid database ID format. Expected a 32-character string.");
+    }
+
+    notionLogger.info("Fetching database properties for:", db);
+    
+    try {
+      const res = await fetch(`https://api.notion.com/v1/databases/${db}`, {
+        method: "GET",
+        headers: this.buildHeaders(token),
+      });
+
+      if (res.status === 429) {
+        const retryAfter = Number(res.headers.get("Retry-After")) || 1;
+        notionLogger.warn("Rate limited, retrying after:", retryAfter);
+        await delay(retryAfter * 1_000);
+        return this.fetchDatabaseProperties(db, token);
+      }
+
+      const text = await res.text();
+      notionLogger.info("Response status:", res.status);
+      notionLogger.info("Response headers:", Object.fromEntries(res.headers.entries()));
+      notionLogger.info("Response body:", text);
+
+      if (!res.ok) {
+        let message = `Failed to fetch database properties: HTTP ${res.status}`;
+        try {
+          const error = JSON.parse(text);
+          if (error.message) {
+            message += ` - ${error.message}`;
+          }
+          notionLogger.error("Error response:", error);
+        } catch {
+          if (text) {
+            message += ` - ${text}`;
+          }
+          notionLogger.error("Non-JSON error response:", text);
+        }
+        throw new Error(message);
+      }
+
+      const data = JSON.parse(text);
+      if (!data.properties) {
+        notionLogger.error("No properties in response:", data);
+        throw new Error("No properties found in database response");
+      }
+
+      notionLogger.info("Successfully fetched properties");
+      return { properties: data.properties };
+    } catch (error) {
+      notionLogger.error("Fetch error:", error);
+      throw error;
+    }
+  }
+
   async fetchTodayTasks(settings: NormalizedSettings & { cacheKey: string }, force = false): Promise<{ tasks: NotionTask[]; error?: string }> {
     const inCacheWindow = this.cacheKey === settings.cacheKey && this.cachedTasks.length > 0 && this.lastFetch && Date.now() - this.lastFetch < 60_000;
     if (!force && inCacheWindow) {
@@ -373,6 +605,10 @@ class NotionClient {
   }
 
   async markTaskDone(taskId: string, settings: NormalizedSettings & { cacheKey: string }): Promise<void> {
+    if (!settings.statusProp || !settings.doneValue) {
+      throw new Error("Status property and done value must be configured");
+    }
+
     const headers = this.buildHeaders(settings.token);
     const res = await fetch(`https://api.notion.com/v1/pages/${taskId}`, {
       method: "PATCH",
@@ -400,15 +636,50 @@ class NotionClient {
 
   private async queryNotion(settings: NormalizedSettings & { cacheKey: string }): Promise<{ tasks: NotionTask[]; error?: string }> {
     try {
+      // Validate date property configuration
+      if (!settings.dateProp) {
+        notionLogger.warn("Date property name not set");
+        return { tasks: [], error: "Please select a date property in the settings" };
+      }
+
+      if (!settings._dbProperties) {
+        notionLogger.warn("Database properties not loaded");
+        return { tasks: [], error: "Database properties not loaded. Please refresh the settings." };
+      }
+
+      if (!settings._dbProperties[settings.dateProp]) {
+        notionLogger.warn("Selected date property not found in database", { dateProp: settings.dateProp });
+        return { 
+          tasks: [], 
+          error: `The selected date property "${settings.dateProp}" was not found in the database. Please check your settings.` 
+        };
+      }
+
+      const propType = settings._dbProperties[settings.dateProp].type;
+      if (propType !== "date") {
+        notionLogger.warn("Selected property is not a date type", { dateProp: settings.dateProp, type: propType });
+        return { 
+          tasks: [], 
+          error: `The selected property "${settings.dateProp}" is not a date property (type: ${propType}). Please select a date property.` 
+        };
+      }
+
       const today = toIsoDate(new Date());
-      const body = {
+      notionLogger.debug("Querying tasks", {
+        dateProp: settings.dateProp,
+        date: today
+      });
+
+      const body: Record<string, unknown> = {
         page_size: 100,
         filter: {
           property: settings.dateProp,
           date: { equals: today },
         },
-        sorts: [{ property: settings.dateProp, direction: "ascending" }],
-      } satisfies Record<string, unknown>;
+        sorts: [{ property: settings.dateProp, direction: "ascending" }]
+      };
+
+      notionLogger.debug("Query body", { body });
 
       const res = await fetch(`https://api.notion.com/v1/databases/${settings.db}/query`, {
         method: "POST",
@@ -483,15 +754,16 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
   return {
     token: trim(settings.token),
     db: trim(settings.db),
-    statusProp: trim(settings.statusProp) ?? DEFAULT_STATUS_PROPERTY,
-    doneValue: trim(settings.doneValue) ?? DEFAULT_DONE_VALUE,
-    dateProp: trim(settings.dateProp) ?? DEFAULT_DATE_PROPERTY,
-    priorityProp: trim(settings.priorityProp) ?? DEFAULT_PRIORITY_PROPERTY,
-    pillarProp: trim(settings.pillarProp) ?? DEFAULT_PILLAR_PROPERTY,
-    projectProp: trim(settings.projectProp) ?? DEFAULT_PROJECT_PROPERTY,
-    meetingPriority: trim(settings.meetingPriority) ?? DEFAULT_MEETING_PRIORITY_OVERRIDE,
+    statusProp: trim(settings.statusProp),
+    doneValue: trim(settings.doneValue),
+    dateProp: trim(settings.dateProp),
+    priorityProp: trim(settings.priorityProp),
+    pillarProp: trim(settings.pillarProp),
+    projectProp: trim(settings.projectProp),
+    meetingPriority: trim(settings.meetingPriority) ?? DEFAULT_MEETING_PRIORITY,
     metricsOrder: sanitizeMetricsOrder(settings.metricsOrder ?? DEFAULT_METRICS_ORDER),
     position: parsePosition(settings.position),
+    _dbProperties: settings._dbProperties,
   };
 }
 
@@ -527,11 +799,14 @@ function extractTask(
 ): NotionTask | undefined {
   const titleProperty = Object.values(page.properties).find(prop => prop.type === "title");
   const title = titleProperty?.title?.map(piece => piece.plain_text).join("") ?? "(untitled)";
-  const priority = extractPropertyText(page.properties[settings.priorityProp]);
-  const status = extractPropertyText(page.properties[settings.statusProp]);
-  const due = extractDateValue(page.properties[settings.dateProp]);
-  const pillar = extractPropertyText(page.properties[settings.pillarProp]);
-  const project = extractPropertyText(page.properties[settings.projectProp]);
+  
+  // Only extract properties that are configured
+  const priority = settings.priorityProp ? extractPropertyText(page.properties[settings.priorityProp]) : undefined;
+  const status = settings.statusProp ? extractPropertyText(page.properties[settings.statusProp]) : undefined;
+  const due = settings.dateProp ? extractDateValue(page.properties[settings.dateProp]) : undefined;
+  const pillar = settings.pillarProp ? extractPropertyText(page.properties[settings.pillarProp]) : undefined;
+  const project = settings.projectProp ? extractPropertyText(page.properties[settings.projectProp]) : undefined;
+
   return {
     id: page.id,
     title,
