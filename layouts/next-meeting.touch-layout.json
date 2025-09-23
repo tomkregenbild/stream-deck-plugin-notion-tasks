@@ -24,7 +24,7 @@
         8,
         24,
         128,
-        32
+        20
       ],
       "font": {
         "size": 12,
@@ -33,22 +33,19 @@
       "alignment": "center"
     },
     {
-      "key": "progress",
-      "type": "bar",
+      "key": "value2",
+      "type": "text",
       "rect": [
-        12,
-        62,
-        120,
-        8
+        8,
+        46,
+        128,
+        20
       ],
-      "background": "#1f2937",
-      "bar_fill_c": "#f59e0b",
-      "border_w": 1,
-      "value": 0,
-      "range": {
-        "min": 0,
-        "max": 1
-      }
+      "font": {
+        "size": 12,
+        "weight": 500
+      },
+      "alignment": "center"
     }
   ]
 }

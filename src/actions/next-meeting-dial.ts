@@ -31,7 +31,7 @@ const logger = streamDeck.logger.createScope("NextMeetingDialAction");
 const INITIAL_FEEDBACK = {
   heading: { value: "Next Meeting" },
   value: { value: "Loading..." },
-  progress: 0,
+  value2: { value: "" },
 } as const;
 
 @action({ UUID: "com.tom-kregenbild.notion-tasks.next-meeting.dial" })
@@ -147,29 +147,29 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
       await state.action.setFeedback({
         heading: { value: "Next Meeting" },
         value: { value: "No meetings" },
-        progress: 0,
+        value2: { value: "" },
       });
       await state.action.setTitle("No meetings");
       return;
     }
 
-    const meetingName = this.formatMeetingName(nextMeeting.title || "Untitled Meeting");
+    const meetingNameParts = this.formatMeetingNameTwoLines(nextMeeting.title || "Untitled Meeting");
     const timeInfo = this.formatTimeInfo(nextMeeting.due);
     
     logger.trace("feedback:update", {
       context: state.id,
-      meetingName,
+      meetingName: meetingNameParts,
       timeInfo,
       due: nextMeeting.due,
     });
 
     await state.action.setFeedback({
       heading: { value: "Next Meeting" },
-      value: { value: meetingName },
-      progress: this.calculateMeetingProgress(nextMeeting.due),
+      value: { value: meetingNameParts.line1 },
+      value2: { value: meetingNameParts.line2 },
     });
     
-    await state.action.setTitle(timeInfo || meetingName);
+    await state.action.setTitle(timeInfo || meetingNameParts.line1);
   }
 
   private getNextMeetingWithTime(summary: any, settings: NotionSettings): NotionTask | undefined {
@@ -207,13 +207,47 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
     return meetings[0];
   }
 
-  private formatMeetingName(name: string): string {
-    // Truncate long meeting names to fit on the dial
-    const maxLength = 20;
-    if (name.length <= maxLength) {
-      return name;
+  private formatMeetingNameTwoLines(name: string): { line1: string; line2: string } {
+    // Split long meeting names across two lines
+    const maxLineLength = 20;
+    
+    if (name.length <= maxLineLength) {
+      return { line1: name, line2: "" };
     }
-    return name.substring(0, maxLength - 3) + "...";
+    
+    // Try to split at a natural break point (space, dash, etc.)
+    const words = name.split(/[\s\-_]/);
+    let line1 = "";
+    let line2 = "";
+    
+    for (const word of words) {
+      const testLine1 = line1 ? `${line1} ${word}` : word;
+      
+      if (testLine1.length <= maxLineLength) {
+        line1 = testLine1;
+      } else {
+        // Start second line
+        line2 = words.slice(words.indexOf(word)).join(" ");
+        break;
+      }
+    }
+    
+    // If second line is too long, truncate it
+    if (line2.length > maxLineLength) {
+      line2 = line2.substring(0, maxLineLength - 3) + "...";
+    }
+    
+    // If we couldn't split naturally, force split
+    if (!line2 && line1.length > maxLineLength) {
+      line2 = line1.substring(maxLineLength);
+      line1 = line1.substring(0, maxLineLength);
+      
+      if (line2.length > maxLineLength) {
+        line2 = line2.substring(0, maxLineLength - 3) + "...";
+      }
+    }
+    
+    return { line1, line2 };
   }
 
   private formatTimeInfo(due?: string): string {
@@ -232,23 +266,5 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
       return meetingTime.toLocaleDateString([], { month: 'short', day: 'numeric' }) + 
              " " + meetingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
-  }
-
-  private calculateMeetingProgress(due?: string): number {
-    if (!due) return 0;
-    
-    const meetingTime = new Date(due);
-    const now = new Date();
-    
-    // Calculate progress based on how close we are to the meeting
-    // If meeting is within 1 hour, show progress bar based on proximity
-    const timeDiff = meetingTime.getTime() - now.getTime();
-    const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
-    
-    if (timeDiff <= 0) return 1; // Meeting has passed
-    if (timeDiff >= oneHour) return 0; // More than 1 hour away
-    
-    // Linear progress from 0 to 1 as we approach the meeting time
-    return 1 - (timeDiff / oneHour);
   }
 }
