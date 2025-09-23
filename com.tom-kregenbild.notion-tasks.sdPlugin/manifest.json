@@ -45,6 +45,31 @@
 					"FontSize": 12
 				}
 			]
+		},
+		{
+			"Name": "Notion Next Meeting",
+			"UUID": "com.tom-kregenbild.notion-tasks.next-meeting.dial",
+			"Icon": "imgs/actionIcon",
+			"Tooltip": "Shows the next upcoming meeting from your Notion database",
+			"PropertyInspectorPath": "ui/next-meeting-inspector.html",
+			"Controllers": [
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/next-meeting.touch-layout.json",
+				"background": "touchscreen-background",
+				"TriggerDescription": {
+					"Rotate": "No action"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/key",
+					"Title": "",
+					"TitleAlignment": "middle",
+					"FontSize": 12
+				}
+			]
 		}
 	],
 	"Category": "Notion Tasks",

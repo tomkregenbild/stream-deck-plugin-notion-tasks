@@ -5,6 +5,9 @@ export interface NotionDatabaseResponse {
     status?: {
       options: Array<{ name: string }>;
     };
+    select?: {
+      options: Array<{ name: string }>;
+    };
   }>;
 }
 

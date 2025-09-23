@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+  "id": "notion-next-meeting",
+  "items": [
+    {
+      "key": "heading",
+      "type": "text",
+      "rect": [
+        8,
+        6,
+        128,
+        16
+      ],
+      "font": {
+        "size": 14,
+        "weight": 600
+      },
+      "alignment": "center"
+    },
+    {
+      "key": "value",
+      "type": "text",
+      "rect": [
+        8,
+        24,
+        128,
+        32
+      ],
+      "font": {
+        "size": 12,
+        "weight": 500
+      },
+      "alignment": "center"
+    },
+    {
+      "key": "progress",
+      "type": "bar",
+      "rect": [
+        12,
+        62,
+        120,
+        8
+      ],
+      "background": "#1f2937",
+      "bar_fill_c": "#f59e0b",
+      "border_w": 1,
+      "value": 0,
+      "range": {
+        "min": 0,
+        "max": 1
+      }
+    }
+  ]
+}

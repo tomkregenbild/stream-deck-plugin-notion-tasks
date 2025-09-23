@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <title>Next Meeting Settings</title>
+    <meta charset="utf-8" />
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Notion Token">
+        <sdpi-password setting="token"></sdpi-password>
+        <sdpi-item-description>Create an internal integration and paste the secret token.</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Database ID">
+        <sdpi-textfield setting="db"></sdpi-textfield>
+        <sdpi-item-description>Paste the database identifier (32 characters, without spaces).</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Status Property">
+        <sdpi-select setting="statusProp" disabled>
+            <option value="">Loading properties...</option>
+        </sdpi-select>
+        <sdpi-item-description>Select the Status property from your Notion database.</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Done Status Value">
+        <sdpi-select setting="doneValue" disabled>
+            <option value="">Loading values...</option>
+        </sdpi-select>
+        <sdpi-item-description>Select which status value represents a completed task.</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Due Date Property">
+        <sdpi-select setting="dateProp" disabled>
+            <option value="">Loading properties...</option>
+        </sdpi-select>
+        <sdpi-item-description>Select the Due Date property from your Notion database.</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Priority Property">
+        <sdpi-select setting="priorityProp" disabled>
+            <option value="">Loading properties...</option>
+        </sdpi-select>
+        <sdpi-item-description>Select the Priority property from your Notion database.</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Meeting Priority Value">
+        <sdpi-select setting="meetingPriority" disabled>
+            <option value="">Select Priority Property first...</option>
+        </sdpi-select>
+        <sdpi-item-description>Select which priority value represents meetings in your database.</sdpi-item-description>
+    </sdpi-item>
+
+    <script>
+        console.log('PI: JavaScript file loaded!');
+        const { streamDeckClient } = SDPIComponents;
+        console.log('PI: streamDeckClient available:', !!streamDeckClient);
+        
+        function updateDropdowns(settings) {
+            console.log('PI: updateDropdowns called with settings:', settings);
+            
+            // Handle different possible settings structures
+            const actualSettings = settings.settings || settings;
+            console.log('PI: Actual settings to use:', actualSettings);
+            console.log('PI: Token present:', !!actualSettings?.token);
+            console.log('PI: DB present:', !!actualSettings?.db);
+            
+            if (!actualSettings?.token || !actualSettings?.db) {
+                console.log('PI: Missing token or db, not updating dropdowns');
+                return;
+            }
+
+            // Check for error state
+            if (actualSettings._dbPropertiesError) {
+                console.log('PI: Error state detected:', actualSettings._dbPropertiesError);
+                // Show error state
+                const statusSelect = document.querySelector('sdpi-select[setting="statusProp"]');
+                const doneSelect = document.querySelector('sdpi-select[setting="doneValue"]');
+                const dateSelect = document.querySelector('sdpi-select[setting="dateProp"]');
+                const prioritySelect = document.querySelector('sdpi-select[setting="priorityProp"]');
+                const meetingSelect = document.querySelector('sdpi-select[setting="meetingPriority"]');
+
+                statusSelect.innerHTML = `<option value="">Error: ${actualSettings._dbPropertiesError}</option>`;
+                dateSelect.innerHTML = `<option value="">Error: ${actualSettings._dbPropertiesError}</option>`;
+                doneSelect.innerHTML = `<option value="">Error loading values</option>`;
+                prioritySelect.innerHTML = `<option value="">Error: ${actualSettings._dbPropertiesError}</option>`;
+                meetingSelect.innerHTML = `<option value="">Error loading priority values</option>`;
+
+                statusSelect.disabled = true;
+                dateSelect.disabled = true;
+                doneSelect.disabled = true;
+                prioritySelect.disabled = true;
+                meetingSelect.disabled = true;
+                return;
+            }
+
+            const properties = actualSettings._dbProperties;
+            if (!properties) {
+                console.log('PI: No properties found, setting loading state and triggering fetch');
+                // Set loading state
+                const statusSelect = document.querySelector('sdpi-select[setting="statusProp"]');
+                const doneSelect = document.querySelector('sdpi-select[setting="doneValue"]');
+                const dateSelect = document.querySelector('sdpi-select[setting="dateProp"]');
+                const prioritySelect = document.querySelector('sdpi-select[setting="priorityProp"]');
+                const meetingSelect = document.querySelector('sdpi-select[setting="meetingPriority"]');
+
+                statusSelect.innerHTML = '<option value="">Loading Properties...</option>';
+                dateSelect.innerHTML = '<option value="">Loading Properties...</option>';
+                doneSelect.innerHTML = '<option value="">Select a Status Property first</option>';
+                prioritySelect.innerHTML = '<option value="">Loading Properties...</option>';
+                meetingSelect.innerHTML = '<option value="">Select a Priority Property first...</option>';
+
+                statusSelect.disabled = true;
+                dateSelect.disabled = true;
+                doneSelect.disabled = true;
+                prioritySelect.disabled = true;
+                meetingSelect.disabled = true;
+
+                // Trigger fetching properties if we don't have them
+                console.log('PI: Available streamDeckClient methods:', Object.getOwnPropertyNames(streamDeckClient));
+                
+                // Try the message method which should send to plugin
+                if (typeof streamDeckClient.message === 'function') {
+                    console.log('PI: Trying streamDeckClient.message');
+                    streamDeckClient.message({ event: 'fetchDatabaseProperties' });
+                } else {
+                    console.log('PI: Could not find message method on streamDeckClient');
+                    // Let's try a different approach - trigger a fake settings change that the plugin can detect
+                    const triggerSettings = {
+                        ...actualSettings,
+                        _triggerPropertyFetch: Date.now() // Use timestamp to ensure change is detected
+                    };
+                    console.log('PI: Triggering property fetch via settings change');
+                    streamDeckClient.setSettings(triggerSettings);
+                }
+                return;
+            }
+
+            // Get the select elements
+            const statusSelect = document.querySelector('sdpi-select[setting="statusProp"]');
+            const doneSelect = document.querySelector('sdpi-select[setting="doneValue"]');
+            const dateSelect = document.querySelector('sdpi-select[setting="dateProp"]');
+            const prioritySelect = document.querySelector('sdpi-select[setting="priorityProp"]');
+            const meetingSelect = document.querySelector('sdpi-select[setting="meetingPriority"]');
+
+            // Clear loading state
+            statusSelect.innerHTML = '';
+            dateSelect.innerHTML = '';
+            doneSelect.innerHTML = '';
+            prioritySelect.innerHTML = '';
+            meetingSelect.innerHTML = '';
+
+            // Add default options
+            statusSelect.appendChild(new Option('Select a status property...', ''));
+            dateSelect.appendChild(new Option('Select a date property...', ''));
+            doneSelect.appendChild(new Option('Select a done value...', ''));
+            prioritySelect.appendChild(new Option('Select a priority property...', ''));
+            meetingSelect.appendChild(new Option('Select a meeting priority value...', ''));
+
+            // Populate properties
+            for (const [name, prop] of Object.entries(properties)) {
+                if (prop.type === 'status') {
+                    statusSelect.appendChild(new Option(name, name));
+                    // When status property is selected, populate done values
+                    if (name === actualSettings.statusProp && prop.status?.options) {
+                        prop.status.options.forEach(option => {
+                            doneSelect.appendChild(new Option(option.name, option.name));
+                        });
+                    }
+                }
+                if (prop.type === 'date') {
+                    dateSelect.appendChild(new Option(name, name));
+                }
+                if (prop.type === 'select') {
+                    prioritySelect.appendChild(new Option(name, name));
+                    // When priority property is selected, populate meeting priority values
+                    if (name === actualSettings.priorityProp && prop.select?.options) {
+                        prop.select.options.forEach(option => {
+                            meetingSelect.appendChild(new Option(option.name, option.name));
+                        });
+                    }
+                }
+            }
+
+            // Enable the selects
+            statusSelect.disabled = false;
+            dateSelect.disabled = false;
+            doneSelect.disabled = false;
+            prioritySelect.disabled = false;
+            meetingSelect.disabled = false;
+
+            // Set current values if they exist
+            if (actualSettings.statusProp) statusSelect.value = actualSettings.statusProp;
+            if (actualSettings.dateProp) dateSelect.value = actualSettings.dateProp;
+            if (actualSettings.doneValue) doneSelect.value = actualSettings.doneValue;
+            if (actualSettings.priorityProp) prioritySelect.value = actualSettings.priorityProp;
+            if (actualSettings.meetingPriority) meetingSelect.value = actualSettings.meetingPriority;
+
+            // Add event listener for status property changes
+            statusSelect.addEventListener('change', (event) => {
+                const selectedProp = properties[event.target.value];
+                doneSelect.innerHTML = '<option value="">Select a done value...</option>';
+                if (selectedProp?.status?.options) {
+                    selectedProp.status.options.forEach(option => {
+                        doneSelect.appendChild(new Option(option.name, option.name));
+                    });
+                }
+            });
+
+            // Add event listener for priority property changes
+            prioritySelect.addEventListener('change', (event) => {
+                const selectedProp = properties[event.target.value];
+                meetingSelect.innerHTML = '<option value="">Select a meeting priority value...</option>';
+                if (selectedProp?.select?.options) {
+                    selectedProp.select.options.forEach(option => {
+                        meetingSelect.appendChild(new Option(option.name, option.name));
+                    });
+                }
+                // Clear the current setting if priority property changes
+                meetingSelect.disabled = false;
+            });
+        }
+
+        // Listen for settings changes using the SDPI Components pattern
+        streamDeckClient.onDidReceiveSettings = (settingsResponse) => {
+            console.log('PI: onDidReceiveSettings called', settingsResponse);
+            const actualSettings = settingsResponse.settings || settingsResponse;
+            updateDropdowns(settingsResponse);
+            
+            // Clear properties error when token or database ID changes
+            if (actualSettings._dbPropertiesError && (actualSettings.token || actualSettings.db)) {
+                console.log('PI: Clearing properties error on token/db change');
+                streamDeckClient.setSettings({
+                    ...actualSettings,
+                    _dbProperties: undefined,
+                    _dbPropertiesError: undefined
+                });
+            }
+        };
+        
+        // Force property fetch when inspector loads if needed
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('PI: DOMContentLoaded event fired!');
+            streamDeckClient.getSettings().then(settingsResponse => {
+                console.log('PI: Initial settings received:', settingsResponse);
+                const actualSettings = settingsResponse.settings || settingsResponse;
+                updateDropdowns(settingsResponse);
+                
+                // If we have token and db but no properties, force a fetch
+                if (actualSettings?.token && actualSettings?.db && !actualSettings._dbProperties && !actualSettings._dbPropertiesError) {
+                    console.log('PI: Forcing initial property fetch');
+                    
+                    // Try the message method which should send to plugin
+                    if (typeof streamDeckClient.message === 'function') {
+                        console.log('PI: Trying streamDeckClient.message for initial fetch');
+                        streamDeckClient.message({ event: 'fetchDatabaseProperties' });
+                    } else {
+                        console.log('PI: Using settings change approach for initial fetch');
+                        // Fallback: trigger via settings change
+                        const triggerSettings = {
+                            ...actualSettings,
+                            _triggerPropertyFetch: Date.now()
+                        };
+                        streamDeckClient.setSettings(triggerSettings);
+                    }
+                }
+            });
+        });
+        
+        // Initial update
+        streamDeckClient.getSettings().then(updateDropdowns);
+    </script>
+</body>
+</html>

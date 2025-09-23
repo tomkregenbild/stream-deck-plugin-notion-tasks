@@ -41,7 +41,11 @@ export type NotionSettings = {
   meetingPriority?: string;
   metricsOrder?: string | string[];
   position?: number | string;
-  _dbProperties?: Record<string, { type: string; status?: { options: Array<{ name: string }> } }>;
+  _dbProperties?: Record<string, { 
+    type: string; 
+    status?: { options: Array<{ name: string }> };
+    select?: { options: Array<{ name: string }> };
+  }>;
   _dbPropertiesError?: string;
   _triggerPropertyFetch?: number;
 };
@@ -58,7 +62,11 @@ interface NormalizedSettings {
   meetingPriority: string;
   metricsOrder: MetricKey[];
   position?: number;
-  _dbProperties?: Record<string, { type: string; status?: { options: Array<{ name: string }> } }>;
+  _dbProperties?: Record<string, { 
+    type: string; 
+    status?: { options: Array<{ name: string }> };
+    select?: { options: Array<{ name: string }> };
+  }>;
 }
 
 type KeyVisualDescriptor = {
