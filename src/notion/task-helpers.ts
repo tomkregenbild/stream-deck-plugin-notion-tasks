@@ -16,6 +16,8 @@ export interface NotionTask {
   project?: string;
   url?: string;
   due?: string;
+  startTime?: string;
+  endTime?: string;
 }
 
 export type MetricKey = "total" | "completed" | "active" | "nextMeeting" | "byPillar" | "byProject";
@@ -132,6 +134,31 @@ export function extractDateValue(prop: NotionPropertyValue | undefined): string 
   if (!value) return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function extractDateRange(prop: NotionPropertyValue | undefined): { start?: string; end?: string } {
+  if (!prop || prop.type !== "date") return {};
+  
+  const start = prop.date?.start ?? undefined;
+  const end = prop.date?.end ?? undefined;
+  
+  const result: { start?: string; end?: string } = {};
+  
+  if (start) {
+    const trimmedStart = start.trim();
+    if (trimmedStart.length > 0) {
+      result.start = trimmedStart;
+    }
+  }
+  
+  if (end) {
+    const trimmedEnd = end.trim();
+    if (trimmedEnd.length > 0) {
+      result.end = trimmedEnd;
+    }
+  }
+  
+  return result;
 }
 
 export function sanitizeMetricsOrder(input: unknown): MetricKey[] {

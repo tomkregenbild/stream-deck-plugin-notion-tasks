@@ -17,6 +17,7 @@ import {
   DEFAULT_METRICS_ORDER,
   buildTaskSummary,
   extractDateValue,
+  extractDateRange,
   extractPropertyText,
   normalizePriorityKey,
   sanitizeMetricsOrder,
@@ -812,6 +813,7 @@ function extractTask(
   const priority = settings.priorityProp ? extractPropertyText(page.properties[settings.priorityProp]) : undefined;
   const status = settings.statusProp ? extractPropertyText(page.properties[settings.statusProp]) : undefined;
   const due = settings.dateProp ? extractDateValue(page.properties[settings.dateProp]) : undefined;
+  const dateRange = settings.dateProp ? extractDateRange(page.properties[settings.dateProp]) : {};
   const pillar = settings.pillarProp ? extractPropertyText(page.properties[settings.pillarProp]) : undefined;
   const project = settings.projectProp ? extractPropertyText(page.properties[settings.projectProp]) : undefined;
 
@@ -823,6 +825,8 @@ function extractTask(
     pillar,
     project,
     due,
+    startTime: dateRange.start,
+    endTime: dateRange.end,
     url: page.url,
   };
 }

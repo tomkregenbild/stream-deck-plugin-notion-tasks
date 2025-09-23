@@ -156,12 +156,14 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
     }
 
     const meetingNameParts = this.formatMeetingNameTwoLines(nextMeeting.title || "Untitled Meeting");
-    const timeDisplay = this.formatTimeDisplay(nextMeeting.due);
+    const timeDisplay = this.formatTimeDisplay(nextMeeting);
     
     logger.trace("feedback:update", {
       context: state.id,
       meetingName: meetingNameParts,
       timeDisplay,
+      startTime: nextMeeting.startTime,
+      endTime: nextMeeting.endTime,
       due: nextMeeting.due,
     });
 
@@ -188,13 +190,14 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
         return false;
       }
       
-      // Check if task has a due date/time
-      if (!task.due) {
+      // Check if task has a due date/time (use startTime if available, fallback to due)
+      const meetingStart = task.startTime || task.due;
+      if (!meetingStart) {
         return false;
       }
       
       // Check if the meeting hasn't passed yet
-      const meetingTime = new Date(task.due);
+      const meetingTime = new Date(meetingStart);
       return meetingTime > now;
     });
     
@@ -202,8 +205,8 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
     if (meetings.length === 0) return undefined;
     
     meetings.sort((a: NotionTask, b: NotionTask) => {
-      const dateA = new Date(a.due!);
-      const dateB = new Date(b.due!);
+      const dateA = new Date(a.startTime || a.due!);
+      const dateB = new Date(b.startTime || b.due!);
       return dateA.getTime() - dateB.getTime();
     });
     
@@ -253,23 +256,68 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
     return { line1, line2 };
   }
 
-  private formatTimeDisplay(due?: string): string {
-    if (!due) return "";
+  private formatTimeDisplay(task: NotionTask): string {
+    const startTime = task.startTime || task.due;
+    if (!startTime) return "";
     
-    const meetingTime = new Date(due);
+    const start = new Date(startTime);
     const now = new Date();
     
     // Check if it's today
-    const isToday = meetingTime.toDateString() === now.toDateString();
+    const isToday = start.toDateString() === now.toDateString();
     
-    if (isToday) {
-      // For today, just show the time
-      return meetingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // Format start time
+    const startTimeStr = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    // Check if we have an end time
+    if (task.endTime) {
+      const end = new Date(task.endTime);
+      const endTimeStr = end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      
+      // Check if start and end are on the same day
+      const sameDay = start.toDateString() === end.toDateString();
+      
+      if (isToday && sameDay) {
+        // Today, same day: "2:30-3:30 PM"
+        return `${startTimeStr}-${endTimeStr}`;
+      } else if (sameDay) {
+        // Future date, same day: "Dec 25 2:30-3:30 PM"
+        const dateStr = start.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return `${dateStr} ${startTimeStr}-${endTimeStr}`;
+      } else {
+        // Different days: show start date and time only for now
+        if (isToday) {
+          return `${startTimeStr} (${this.calculateDuration(start, end)})`;
+        } else {
+          const dateStr = start.toLocaleDateString([], { month: 'short', day: 'numeric' });
+          return `${dateStr} ${startTimeStr} (${this.calculateDuration(start, end)})`;
+        }
+      }
     } else {
-      // For other days, show date and time
-      const dateStr = meetingTime.toLocaleDateString([], { month: 'short', day: 'numeric' });
-      const timeStr = meetingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      return `${dateStr} ${timeStr}`;
+      // No end time, just show start
+      if (isToday) {
+        return startTimeStr;
+      } else {
+        const dateStr = start.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return `${dateStr} ${startTimeStr}`;
+      }
+    }
+  }
+
+  private calculateDuration(start: Date, end: Date): string {
+    const diffMs = end.getTime() - start.getTime();
+    const diffMinutes = Math.round(diffMs / (1000 * 60));
+    
+    if (diffMinutes < 60) {
+      return `${diffMinutes}m`;
+    } else {
+      const hours = Math.floor(diffMinutes / 60);
+      const minutes = diffMinutes % 60;
+      if (minutes === 0) {
+        return `${hours}h`;
+      } else {
+        return `${hours}h${minutes}m`;
+      }
     }
   }
 }
