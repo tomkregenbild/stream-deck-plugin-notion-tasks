@@ -139,7 +139,15 @@ class HabitCoordinator {
     // For checkbox columns, toggle the value
     if (state.habitRecord.columnType === "checkbox") {
       try {
-        await this.toggleHabitCheckbox(state.habitRecord.id, settings);
+        const currentValue = Boolean(state.habitRecord.columnValue);
+        logger.debug("About to toggle habit checkbox", { 
+          context: id, 
+          recordId: state.habitRecord.id,
+          columnProp: settings.columnProp,
+          currentValue, 
+          newValue: !currentValue 
+        });
+        await this.toggleHabitCheckbox(state.habitRecord.id, settings, currentValue);
         await this.fetchAndPaint(id, true); // Force refresh
       } catch (error) {
         logger.error("Failed to toggle habit checkbox", { error });
@@ -309,14 +317,19 @@ class HabitCoordinator {
     }
   }
 
-  private async toggleHabitCheckbox(recordId: string, settings: NormalizedHabitSettings): Promise<void> {
+  private async toggleHabitCheckbox(recordId: string, settings: NormalizedHabitSettings, currentValue: boolean): Promise<void> {
     if (!settings.token || !settings.columnProp) {
       throw new Error("Missing token or column property");
     }
 
-    const state = this.contexts.values().next().value;
-    const currentValue = state?.habitRecord?.columnValue;
     const newValue = !currentValue;
+
+    logger.debug("Toggling habit checkbox", { 
+      recordId, 
+      columnProp: settings.columnProp, 
+      currentValue, 
+      newValue 
+    });
 
     const body = {
       properties: {
@@ -339,7 +352,7 @@ class HabitCoordinator {
     if (res.status === 429) {
       const retryAfter = Number(res.headers.get("Retry-After")) || 1;
       await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-      return this.toggleHabitCheckbox(recordId, settings);
+      return this.toggleHabitCheckbox(recordId, settings, currentValue);
     }
 
     if (!res.ok) {
