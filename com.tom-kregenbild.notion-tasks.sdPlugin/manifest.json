@@ -34,7 +34,9 @@
 				"layout": "layouts/active-summary.touch-layout.json",
 				"background": "touchscreen-background",
 				"TriggerDescription": {
-					"Rotate": "No action"
+					"Rotate": "Navigate tasks",
+					"Push": "Mark done",
+					"LongTouch": "Return to summary"
 				}
 			},
 			"States": [
@@ -59,7 +61,7 @@
 				"layout": "layouts/next-meeting.touch-layout.json",
 				"background": "touchscreen-background",
 				"TriggerDescription": {
-					"Rotate": "No action"
+					"Rotate": "Browse meetings"
 				}
 			},
 			"States": [
@@ -84,7 +86,9 @@
 				"layout": "layouts/habit-summary.touch-layout.json",
 				"background": "touchscreen-background",
 				"TriggerDescription": {
-					"Rotate": "No action"
+					"Rotate": "Navigate habits",
+					"Push": "Toggle habit",
+					"LongTouch": "Return to summary"
 				}
 			},
 			"States": [
