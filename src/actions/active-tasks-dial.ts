@@ -26,6 +26,7 @@ interface ContextState {
   layoutApplied: boolean;
   unsubscribe?: () => void;
   currentTaskIndex: number;
+  isInDetailMode: boolean;
 }
 
 const logger = streamDeck.logger.createScope("ActiveTasksDialAction");
@@ -47,6 +48,7 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
       action,
       layoutApplied: false,
       currentTaskIndex: 0,
+      isInDetailMode: false,
     };
     this.contexts.set(state.id, state);
 
@@ -56,6 +58,10 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     await action.setTitle("Active Tasks");
     await action.setFeedback({ ...INITIAL_FEEDBACK });
 
+    // Reset to summary mode on appear
+    state.isInDetailMode = false;
+    state.currentTaskIndex = 0;
+
     const summary = getNotionTodaySummary();
     if (summary) {
       await this.updateFeedback(state, summary);
@@ -64,7 +70,16 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     state.unsubscribe = subscribeToNotionSummary(latest => {
       if (!this.contexts.has(state.id)) return;
       if (!latest) return;
-      void this.updateFeedback(state, latest);
+      const currentState = this.contexts.get(state.id);
+      if (!currentState) return;
+      
+      if (currentState.isInDetailMode) {
+        // In detail mode, update with current task
+        void this.updateFeedbackWithCurrentTask(currentState, latest);
+      } else {
+        // In summary mode, update with summary
+        void this.updateFeedback(currentState, latest);
+      }
     });
   }
 
@@ -93,22 +108,45 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
       return;
     }
 
-    if (summary.activeTasks.length === 1) {
-      logger.debug("onDialRotate:singleTask", { context: state.id });
-      return;
-    }
-
     const direction = ev.payload.ticks > 0 ? "next" : "previous";
     const oldIndex = state.currentTaskIndex;
+    const totalTasks = summary.activeTasks.length;
 
-    if (direction === "next") {
-      // Turn right: go to next task
-      state.currentTaskIndex = (state.currentTaskIndex + 1) % summary.activeTasks.length;
+    if (!state.isInDetailMode) {
+      // Currently in summary mode, enter detail mode
+      state.isInDetailMode = true;
+      state.currentTaskIndex = direction === "next" ? 0 : totalTasks - 1;
     } else {
-      // Turn left: go to previous task
-      state.currentTaskIndex = state.currentTaskIndex === 0 
-        ? summary.activeTasks.length - 1 
-        : state.currentTaskIndex - 1;
+      // Currently in detail mode, navigate through tasks
+      if (direction === "next") {
+        state.currentTaskIndex++;
+        if (state.currentTaskIndex >= totalTasks) {
+          // Past the last task, return to summary mode
+          state.isInDetailMode = false;
+          state.currentTaskIndex = 0;
+          logger.debug("onDialRotate:returnToSummary", { 
+            context: state.id, 
+            direction,
+            totalTasks
+          });
+          await this.updateFeedback(state, summary);
+          return;
+        }
+      } else {
+        state.currentTaskIndex--;
+        if (state.currentTaskIndex < 0) {
+          // Before the first task, return to summary mode
+          state.isInDetailMode = false;
+          state.currentTaskIndex = 0;
+          logger.debug("onDialRotate:returnToSummary", { 
+            context: state.id, 
+            direction,
+            totalTasks
+          });
+          await this.updateFeedback(state, summary);
+          return;
+        }
+      }
     }
 
     logger.debug("onDialRotate", { 
@@ -116,7 +154,8 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
       direction, 
       oldIndex, 
       newIndex: state.currentTaskIndex,
-      totalTasks: summary.activeTasks.length
+      totalTasks,
+      isInDetailMode: state.isInDetailMode
     });
 
     await this.updateFeedbackWithCurrentTask(state, summary);

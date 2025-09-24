@@ -82,6 +82,7 @@ interface ContextState {
   summary?: ExtendedHabitSummary;
   error?: string;
   currentHabitIndex: number;
+  isInDetailMode: boolean;
 }
 
 const INITIAL_FEEDBACK = {
@@ -112,6 +113,7 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       settings,
       normalized,
       currentHabitIndex: 0,
+      isInDetailMode: false,
     };
     this.contexts.set(state.id, state);
 
@@ -120,6 +122,10 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
     await this.ensureLayout(state);
     await action.setTitle("Habits");
     await action.setFeedback({ ...INITIAL_FEEDBACK });
+
+    // Reset to summary mode on appear
+    state.isInDetailMode = false;
+    state.currentHabitIndex = 0;
 
     // Auto-fetch database properties if missing
     if (settings.token && settings.db && !settings._dbProperties) {
@@ -182,22 +188,45 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       return;
     }
 
-    if (state.summary.allHabits.length === 1) {
-      logger.debug("onDialRotate:singleHabit", { context: state.id });
-      return;
-    }
-
     const direction = ev.payload.ticks > 0 ? "next" : "previous";
     const oldIndex = state.currentHabitIndex;
+    const totalHabits = state.summary.allHabits.length;
 
-    if (direction === "next") {
-      // Turn right: go to next habit
-      state.currentHabitIndex = (state.currentHabitIndex + 1) % state.summary.allHabits.length;
+    if (!state.isInDetailMode) {
+      // Currently in summary mode, enter detail mode
+      state.isInDetailMode = true;
+      state.currentHabitIndex = direction === "next" ? 0 : totalHabits - 1;
     } else {
-      // Turn left: go to previous habit
-      state.currentHabitIndex = state.currentHabitIndex === 0 
-        ? state.summary.allHabits.length - 1 
-        : state.currentHabitIndex - 1;
+      // Currently in detail mode, navigate through habits
+      if (direction === "next") {
+        state.currentHabitIndex++;
+        if (state.currentHabitIndex >= totalHabits) {
+          // Past the last habit, return to summary mode
+          state.isInDetailMode = false;
+          state.currentHabitIndex = 0;
+          logger.debug("onDialRotate:returnToSummary", { 
+            context: state.id, 
+            direction,
+            totalHabits
+          });
+          await this.updateFeedback(state);
+          return;
+        }
+      } else {
+        state.currentHabitIndex--;
+        if (state.currentHabitIndex < 0) {
+          // Before the first habit, return to summary mode
+          state.isInDetailMode = false;
+          state.currentHabitIndex = 0;
+          logger.debug("onDialRotate:returnToSummary", { 
+            context: state.id, 
+            direction,
+            totalHabits
+          });
+          await this.updateFeedback(state);
+          return;
+        }
+      }
     }
 
     logger.debug("onDialRotate", { 
@@ -205,7 +234,8 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       direction, 
       oldIndex, 
       newIndex: state.currentHabitIndex,
-      totalHabits: state.summary.allHabits.length
+      totalHabits,
+      isInDetailMode: state.isInDetailMode
     });
 
     await this.updateFeedbackWithCurrentHabit(state);
@@ -599,6 +629,17 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
   }
 
   private async updateFeedback(state: ContextState): Promise<void> {
+    if (state.isInDetailMode && state.summary && state.summary.allHabits && state.summary.allHabits.length > 0) {
+      // In detail mode, show current habit
+      await this.updateFeedbackWithCurrentHabit(state);
+      return;
+    }
+
+    // In summary mode or no habits available, show summary
+    await this.updateFeedbackSummary(state);
+  }
+
+  private async updateFeedbackSummary(state: ContextState): Promise<void> {
     if (state.error) {
       await state.action.setFeedback({
         heading: { value: "Habits" },
