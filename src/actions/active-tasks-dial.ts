@@ -6,6 +6,9 @@ import {
   type WillDisappearEvent,
   type DidReceiveSettingsEvent,
   type DialRotateEvent,
+  type TouchTapEvent,
+  type DialDownEvent,
+  type DialUpEvent,
 } from "@elgato/streamdeck";
 
 import streamDeck from "@elgato/streamdeck";
@@ -166,6 +169,118 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     });
 
     await this.updateFeedbackWithCurrentTask(state, summary);
+  }
+
+  override async onTouchTap(ev: TouchTapEvent<NotionSettings>): Promise<void> {
+    const state = this.contexts.get(ev.action.id);
+    if (!state) {
+      logger.debug("onTouchTap:missing", { context: ev.action.id });
+      return;
+    }
+
+    // Only allow completing tasks when in detail mode
+    if (!state.isInDetailMode) {
+      logger.debug("onTouchTap:notInDetailMode", { context: state.id });
+      return;
+    }
+
+    const summary = getNotionTodaySummary();
+    if (!summary || !summary.activeTasks || summary.activeTasks.length === 0) {
+      logger.debug("onTouchTap:noTasks", { context: state.id });
+      return;
+    }
+
+    const currentTask = summary.activeTasks[state.currentTaskIndex];
+    if (!currentTask) {
+      logger.debug("onTouchTap:noCurrentTask", { context: state.id, index: state.currentTaskIndex });
+      return;
+    }
+
+    const settings = ev.payload.settings ?? {};
+    if (!settings.statusProp || !settings.doneValue) {
+      logger.debug("onTouchTap:missingSettings", { 
+        context: state.id, 
+        hasStatusProp: !!settings.statusProp,
+        hasDoneValue: !!settings.doneValue
+      });
+      return;
+    }
+
+    try {
+      logger.debug("onTouchTap:markingTaskDone", { 
+        context: state.id, 
+        taskId: currentTask.id, 
+        taskTitle: currentTask.title 
+      });
+
+      await this.markTaskDone(currentTask.id, settings);
+      
+      // After marking done, return to summary mode
+      state.isInDetailMode = false;
+      state.currentTaskIndex = 0;
+      await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
+      
+      // Refresh the summary display
+      const updatedSummary = getNotionTodaySummary();
+      if (updatedSummary) {
+        await this.updateFeedback(state, updatedSummary);
+      }
+
+      logger.debug("onTouchTap:taskMarkedDone", { 
+        context: state.id, 
+        taskId: currentTask.id 
+      });
+    } catch (error) {
+      logger.error("onTouchTap:error", { 
+        context: state.id, 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      
+      // Show error indicator
+      await ev.action.showAlert();
+    }
+  }
+
+  override async onDialDown(ev: DialDownEvent<NotionSettings>): Promise<void> {
+    logger.debug("onDialDown:triggered", { context: ev.action.id });
+    
+    // Use the same logic as onTouchTap for dial press
+    await this.onTouchTap(ev as any); // Cast since they have the same interface for our purposes
+  }
+
+  private async markTaskDone(taskId: string, settings: NotionSettings): Promise<void> {
+    if (!settings.statusProp || !settings.doneValue || !settings.token) {
+      throw new Error("Status property, done value, and token must be configured");
+    }
+
+    const headers = {
+      Authorization: `Bearer ${settings.token}`,
+      "Notion-Version": "2022-06-28",
+      "Content-Type": "application/json",
+    };
+
+    const res = await fetch(`https://api.notion.com/v1/pages/${taskId}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({
+        properties: {
+          [settings.statusProp]: {
+            status: { name: settings.doneValue },
+          },
+        },
+      }),
+    });
+
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get("Retry-After")) || 1;
+      await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+      return this.markTaskDone(taskId, settings);
+    }
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Notion update failed ${res.status}: ${errorText}`);
+    }
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<NotionSettings>): Promise<void> {

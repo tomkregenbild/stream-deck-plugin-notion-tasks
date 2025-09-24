@@ -9,6 +9,9 @@ import {
   type JsonValue,
   type JsonObject,
   type DialRotateEvent,
+  type TouchTapEvent,
+  type DialDownEvent,
+  type DialUpEvent,
 } from "@elgato/streamdeck";
 
 import streamDeck from "@elgato/streamdeck";
@@ -246,6 +249,148 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
     });
 
     await this.updateFeedbackWithCurrentHabit(state);
+  }
+
+  override async onTouchTap(ev: TouchTapEvent<HabitDialSettings>): Promise<void> {
+    const state = this.contexts.get(ev.action.id);
+    if (!state) {
+      logger.debug("onTouchTap:missing", { context: ev.action.id });
+      return;
+    }
+
+    // Only allow toggling habits when in detail mode
+    if (!state.isInDetailMode) {
+      logger.debug("onTouchTap:notInDetailMode", { context: state.id });
+      return;
+    }
+
+    if (!state.summary || !state.summary.allHabits || state.summary.allHabits.length === 0) {
+      logger.debug("onTouchTap:noHabits", { context: state.id });
+      return;
+    }
+
+    const currentHabit = state.summary.allHabits[state.currentHabitIndex];
+    if (!currentHabit) {
+      logger.debug("onTouchTap:noCurrentHabit", { context: state.id, index: state.currentHabitIndex });
+      return;
+    }
+
+    // Only allow toggling checkbox habits
+    if (currentHabit.type !== 'checkbox') {
+      logger.debug("onTouchTap:notCheckboxHabit", { 
+        context: state.id, 
+        habitType: currentHabit.type,
+        habitName: currentHabit.name
+      });
+      
+      // Show alert for non-checkbox habits
+      await ev.action.showAlert();
+      return;
+    }
+
+    const settings = ev.payload.settings ?? {};
+    if (!settings.token) {
+      logger.debug("onTouchTap:missingToken", { context: state.id });
+      return;
+    }
+
+    // Find which record contains this habit
+    let recordId: string | undefined;
+    let columnProp: string | undefined;
+
+    for (const record of state.summary.records) {
+      const habitInRecord = record.habits.find(h => h.name === currentHabit.name && h.type === 'checkbox');
+      if (habitInRecord) {
+        recordId = record.id;
+        // The currentHabit.name IS the column name
+        columnProp = currentHabit.name;
+        break;
+      }
+    }
+
+    if (!recordId || !columnProp) {
+      logger.debug("onTouchTap:cannotFindHabitRecord", { 
+        context: state.id,
+        habitName: currentHabit.name,
+        hasRecordId: !!recordId,
+        hasColumnProp: !!columnProp
+      });
+      return;
+    }
+
+    try {
+      logger.debug("onTouchTap:togglingHabit", { 
+        context: state.id, 
+        recordId, 
+        columnProp,
+        habitName: currentHabit.name,
+        currentValue: currentHabit.completed
+      });
+
+      await this.toggleHabitCheckbox(recordId, columnProp, settings.token, currentHabit.completed);
+      
+      // After toggling, return to summary mode and refresh
+      state.isInDetailMode = false;
+      state.currentHabitIndex = 0;
+      await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
+      
+      // Refresh the display
+      await this.fetchAndUpdate(state, true);
+
+      logger.debug("onTouchTap:habitToggled", { 
+        context: state.id, 
+        recordId,
+        habitName: currentHabit.name
+      });
+    } catch (error) {
+      logger.error("onTouchTap:error", { 
+        context: state.id, 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+      
+      // Show error indicator
+      await ev.action.showAlert();
+    }
+  }
+
+  override async onDialDown(ev: DialDownEvent<HabitDialSettings>): Promise<void> {
+    logger.debug("onDialDown:triggered", { context: ev.action.id });
+    
+    // Use the same logic as onTouchTap for dial press
+    await this.onTouchTap(ev as any); // Cast since they have the same interface for our purposes
+  }
+
+  private async toggleHabitCheckbox(recordId: string, columnProp: string, token: string, currentValue: boolean): Promise<void> {
+    const newValue = !currentValue;
+
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Notion-Version": "2022-06-28",
+      "Content-Type": "application/json",
+    };
+
+    const res = await fetch(`https://api.notion.com/v1/pages/${recordId}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({
+        properties: {
+          [columnProp]: {
+            checkbox: newValue
+          }
+        }
+      }),
+    });
+
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get("Retry-After")) || 1;
+      await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+      return this.toggleHabitCheckbox(recordId, columnProp, token, currentValue);
+    }
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Failed to update habit: HTTP ${res.status}: ${errorText}`);
+    }
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<HabitDialSettings>): Promise<void> {
