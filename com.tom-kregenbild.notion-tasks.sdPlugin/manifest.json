@@ -72,6 +72,31 @@
 			]
 		},
 		{
+			"Name": "Notion Habits Summary",
+			"UUID": "com.tom-kregenbild.notion-tasks.habits.dial",
+			"Icon": "imgs/actionIcon",
+			"Tooltip": "Shows completed vs total habits from your Notion database view",
+			"PropertyInspectorPath": "ui/habit-summary-inspector.html",
+			"Controllers": [
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/habit-summary.touch-layout.json",
+				"background": "touchscreen-background",
+				"TriggerDescription": {
+					"Rotate": "No action"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/key",
+					"Title": "",
+					"TitleAlignment": "middle",
+					"FontSize": 12
+				}
+			]
+		},
+		{
 			"Name": "Notion Habit Tracker",
 			"UUID": "com.tom-kregenbild.notion-tasks.habit",
 			"Icon": "imgs/actionIcon",

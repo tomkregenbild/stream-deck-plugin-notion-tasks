@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <title>Notion Habits Summary Settings</title>
+    <meta charset="utf-8" />
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Notion Token">
+        <sdpi-password setting="token"></sdpi-password>
+        <sdpi-item-description>Create an internal integration and paste the secret token.</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Database ID">
+        <sdpi-textfield setting="db"></sdpi-textfield>
+        <sdpi-item-description>Paste the habits database identifier (32 characters, without spaces).</sdpi-item-description>
+    </sdpi-item>
+
+    <script>
+        console.log('PI: Habit Summary JavaScript file loaded!');
+        const { streamDeckClient } = SDPIComponents;
+        console.log('PI: streamDeckClient available:', !!streamDeckClient);
+        
+        function updateStatus(settings) {
+            console.log('PI: updateStatus called with settings:', settings);
+            
+            // Handle different possible settings structures
+            const actualSettings = settings.settings || settings;
+            console.log('PI: Actual settings to use:', actualSettings);
+            console.log('PI: Token present:', !!actualSettings?.token);
+            console.log('PI: DB present:', !!actualSettings?.db);
+            
+            if (!actualSettings?.token || !actualSettings?.db) {
+                console.log('PI: Missing token or db');
+                return;
+            }
+
+            // Check for error states
+            if (actualSettings._dbPropertiesError) {
+                console.log('PI: Database error detected:', actualSettings._dbPropertiesError);
+                return;
+            }
+
+            const dbProperties = actualSettings._dbProperties;
+            
+            if (dbProperties) {
+                console.log('PI: Properties loaded successfully');
+                console.log('PI: DB Properties count:', Object.keys(dbProperties).length);
+            }
+        }
+
+        // Handle settings updates from Stream Deck
+        streamDeckClient.on('didReceiveSettings', (data) => {
+            console.log('PI: Received settings update:', data);
+            updateStatus(data.payload);
+        });
+
+        // Handle initial settings
+        streamDeckClient.on('websocketOpen', () => {
+            console.log('PI: WebSocket opened, requesting settings');
+            streamDeckClient.requestSettings();
+        });
+
+        // Handle messages from plugin
+        streamDeckClient.on('sendToPropertyInspector', (data) => {
+            console.log('PI: Received message from plugin:', data);
+        });
+
+        // Monitor token and db changes to trigger property fetching
+        let currentSettings = {};
+        
+        streamDeckClient.on('didReceiveSettings', (data) => {
+            const newSettings = data.payload.settings || {};
+            
+            // Check if token or db changed and we have all required values
+            if (newSettings.token && newSettings.db && 
+                (newSettings.token !== currentSettings.token || 
+                 newSettings.db !== currentSettings.db)) {
+                console.log('PI: Token or DB changed, triggering property fetch');
+                
+                // Trigger database property fetch
+                const updatedSettings = {
+                    ...newSettings,
+                    _triggerPropertyFetch: Date.now()
+                };
+                
+                streamDeckClient.setSettings(updatedSettings);
+            }
+            
+            currentSettings = { ...newSettings };
+            updateStatus(data);
+        });
+
+        console.log('PI: Script initialization complete');
+    </script>
+</body>
+</html>
