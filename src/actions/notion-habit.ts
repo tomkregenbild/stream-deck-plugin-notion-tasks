@@ -393,18 +393,20 @@ class HabitCoordinator {
         descriptor = { ...descriptor, label: habitName }; // Use habit name as label
         title = wrapText(isCompleted ? "✓ Done" : "Todo");
       } else if (columnType === "rich_text" || columnType === "title") {
-        descriptor = BASE_VISUALS["habit-text"];
-        descriptor = { ...descriptor, label: habitName }; // Use habit name as label
         const text = String(columnValue || "");
-        if (text.trim()) {
+        const hasValue = text.trim();
+        descriptor = hasValue ? BASE_VISUALS["habit-complete"] : BASE_VISUALS["habit-incomplete"];
+        descriptor = { ...descriptor, label: habitName }; // Use habit name as label
+        if (hasValue) {
           title = wrapText(text);
         } else {
           title = wrapText("Todo");
         }
       } else if (columnType === "number") {
-        descriptor = BASE_VISUALS["habit-text"];
+        const hasValue = columnValue !== undefined && columnValue !== null;
+        descriptor = hasValue ? BASE_VISUALS["habit-complete"] : BASE_VISUALS["habit-incomplete"];
         descriptor = { ...descriptor, label: habitName }; // Use habit name as label
-        if (columnValue !== undefined && columnValue !== null) {
+        if (hasValue) {
           // Format number appropriately
           const numValue = Number(columnValue);
           const formattedNumber = Number.isInteger(numValue) ? numValue.toString() : numValue.toFixed(2).replace(/\.?0+$/, '');
