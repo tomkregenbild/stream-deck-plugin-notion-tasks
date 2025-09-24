@@ -70,6 +70,24 @@
 					"FontSize": 12
 				}
 			]
+		},
+		{
+			"Name": "Notion Habit Tracker",
+			"UUID": "com.tom-kregenbild.notion-tasks.habit",
+			"Icon": "imgs/actionIcon",
+			"Tooltip": "Track daily habits from your Notion database",
+			"States": [
+				{
+					"Image": "imgs/key",
+					"TitleAlignment": "middle",
+					"FontSize": 12
+				}
+			],
+			"SupportedInMultiActions": false,
+			"PropertyInspectorPath": "ui/habit-inspector.html",
+			"Controllers": [
+				"Keypad"
+			]
 		}
 	],
 	"Category": "Notion Tasks",

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <title>Notion Habit Settings</title>
+    <meta charset="utf-8" />
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Notion Token">
+        <sdpi-password setting="token"></sdpi-password>
+        <sdpi-item-description>Create an internal integration and paste the secret token.</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Database ID">
+        <sdpi-textfield setting="db"></sdpi-textfield>
+        <sdpi-item-description>Paste the database identifier (32 characters, without spaces). This should be your habit tracking database with one record per day.</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Habit Column">
+        <sdpi-select setting="columnProp" disabled>
+            <option value="">Loading properties...</option>
+        </sdpi-select>
+        <sdpi-item-description>Select the column you want to track. Checkbox columns can be toggled, text columns show current value or empty status.</sdpi-item-description>
+    </sdpi-item>
+
+    <script>
+        console.log('PI: Habit Inspector JavaScript loaded!');
+        const { streamDeckClient } = SDPIComponents;
+        console.log('PI: streamDeckClient available:', !!streamDeckClient);
+        
+        function updateDropdowns(settings) {
+            console.log('PI: updateDropdowns called with settings:', settings);
+            
+            // Handle different possible settings structures
+            const actualSettings = settings.settings || settings;
+            console.log('PI: Actual settings to use:', actualSettings);
+            console.log('PI: Token present:', !!actualSettings?.token);
+            console.log('PI: DB present:', !!actualSettings?.db);
+            
+            if (!actualSettings?.token || !actualSettings?.db) {
+                console.log('PI: Missing token or db, not updating dropdowns');
+                return;
+            }
+
+            // Check for error state
+            if (actualSettings._dbPropertiesError) {
+                console.log('PI: Error state detected:', actualSettings._dbPropertiesError);
+                // Show error state
+                const columnSelect = document.querySelector('sdpi-select[setting="columnProp"]');
+
+                columnSelect.innerHTML = `<option value="">Error: ${actualSettings._dbPropertiesError}</option>`;
+                columnSelect.disabled = true;
+                return;
+            }
+
+            const properties = actualSettings._dbProperties;
+            if (!properties) {
+                console.log('PI: No properties found, setting loading state and triggering fetch');
+                // Set loading state
+                const columnSelect = document.querySelector('sdpi-select[setting="columnProp"]');
+
+                columnSelect.innerHTML = '<option value="">Loading Properties...</option>';
+                columnSelect.disabled = true;
+
+                // Trigger fetching properties if we don't have them
+                console.log('PI: Available streamDeckClient methods:', Object.getOwnPropertyNames(streamDeckClient));
+                
+                // Try the message method which should send to plugin
+                if (typeof streamDeckClient.message === 'function') {
+                    console.log('PI: Trying streamDeckClient.message');
+                    streamDeckClient.message({ event: 'fetchDatabaseProperties' });
+                } else {
+                    console.log('PI: Could not find message method on streamDeckClient');
+                    // Let's try a different approach - trigger a fake settings change that the plugin can detect
+                    const triggerSettings = {
+                        ...actualSettings,
+                        _triggerPropertyFetch: Date.now() // Use timestamp to ensure change is detected
+                    };
+                    console.log('PI: Triggering property fetch via settings change');
+                    streamDeckClient.setSettings(triggerSettings);
+                }
+                return;
+            }
+
+            // Get the select element
+            const columnSelect = document.querySelector('sdpi-select[setting="columnProp"]');
+
+            // Clear loading state
+            columnSelect.innerHTML = '';
+
+            // Add default option
+            columnSelect.appendChild(new Option('Select a column...', ''));
+
+            // Populate properties - filter for supported types
+            const supportedTypes = ['checkbox', 'rich_text', 'title'];
+            let hasOptions = false;
+
+            for (const [name, prop] of Object.entries(properties)) {
+                if (supportedTypes.includes(prop.type)) {
+                    const optionText = `${name} (${prop.type})`;
+                    columnSelect.appendChild(new Option(optionText, name));
+                    hasOptions = true;
+                }
+            }
+
+            if (!hasOptions) {
+                columnSelect.appendChild(new Option('No supported columns found (checkbox, text, or title)', ''));
+                columnSelect.disabled = true;
+                return;
+            }
+
+            // Enable the select
+            columnSelect.disabled = false;
+
+            // Set current value if it exists
+            if (actualSettings.columnProp) {
+                columnSelect.value = actualSettings.columnProp;
+            }
+
+            console.log('PI: Dropdowns updated successfully');
+        }
+
+        // Listen for settings changes using the SDPI Components pattern
+        streamDeckClient.onDidReceiveSettings = (settingsResponse) => {
+            console.log('PI: onDidReceiveSettings called', settingsResponse);
+            const actualSettings = settingsResponse.settings || settingsResponse;
+            updateDropdowns(settingsResponse);
+            
+            // Clear properties error when token or database ID changes
+            if (actualSettings._dbPropertiesError && (actualSettings.token || actualSettings.db)) {
+                console.log('PI: Clearing properties error on token/db change');
+                streamDeckClient.setSettings({
+                    ...actualSettings,
+                    _dbProperties: undefined,
+                    _dbPropertiesError: undefined
+                });
+            }
+        };
+        
+        // Force property fetch when inspector loads if needed
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('PI: DOMContentLoaded event fired!');
+            streamDeckClient.getSettings().then(settingsResponse => {
+                console.log('PI: Initial settings received:', settingsResponse);
+                const actualSettings = settingsResponse.settings || settingsResponse;
+                updateDropdowns(settingsResponse);
+                
+                // If we have token and db but no properties, force a fetch
+                if (actualSettings?.token && actualSettings?.db && !actualSettings._dbProperties && !actualSettings._dbPropertiesError) {
+                    console.log('PI: Forcing initial property fetch');
+                    
+                    // Try the message method which should send to plugin
+                    if (typeof streamDeckClient.message === 'function') {
+                        console.log('PI: Trying streamDeckClient.message for initial fetch');
+                        streamDeckClient.message({ event: 'fetchDatabaseProperties' });
+                    } else {
+                        console.log('PI: Using settings change approach for initial fetch');
+                        // Fallback: trigger via settings change
+                        const triggerSettings = {
+                            ...actualSettings,
+                            _triggerPropertyFetch: Date.now()
+                        };
+                        streamDeckClient.setSettings(triggerSettings);
+                    }
+                }
+            });
+        });
+        
+        // Initial update
+        streamDeckClient.getSettings().then(updateDropdowns);
+    </script>
+</body>
+</html>
