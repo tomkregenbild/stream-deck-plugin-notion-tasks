@@ -88,7 +88,8 @@ interface ContextState {
 const INITIAL_FEEDBACK = {
   heading: { value: "Habits" },
   value: { value: "Loading..." },
-  progress: 0,
+  value2: { value: "" },
+  time: { value: "" },
 } as const;
 
 function isJsonObject(value: JsonValue): value is JsonObject {
@@ -644,7 +645,8 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       await state.action.setFeedback({
         heading: { value: "Habits" },
         value: { value: "Error" },
-        progress: 0,
+        value2: { value: "" },
+        time: { value: "" },
       });
       await state.action.setTitle(`Error: ${state.error}`);
       return;
@@ -654,7 +656,8 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       await state.action.setFeedback({
         heading: { value: "Habits" },
         value: { value: "Loading..." },
-        progress: 0,
+        value2: { value: "" },
+        time: { value: "" },
       });
       await state.action.setTitle("Loading habits...");
       return;
@@ -663,6 +666,7 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
     const { completed, total } = state.summary;
     const ratio = total > 0 ? this.clampRatio(completed / total) : 0;
     const title = total > 0 ? `${completed} of ${total} habits` : "No habits";
+    const percentageText = total > 0 ? `${Math.round(ratio * 100)}% complete` : "";
 
     logger.trace("feedback:update", {
       context: state.id,
@@ -674,7 +678,8 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
     await state.action.setFeedback({
       heading: { value: "Habits" },
       value: { value: `${completed} / ${total}` },
-      progress: ratio,
+      value2: { value: "" },
+      time: { value: percentageText },
     });
     await state.action.setTitle(title);
   }
@@ -692,8 +697,9 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
     }
 
     const habitPosition = `${state.currentHabitIndex + 1}/${state.summary.allHabits.length}`;
-    const habitTitle = this.truncateTitle(currentHabit.name);
-    const status = currentHabit.completed ? "✓" : "○";
+    const habitNameParts = this.formatHabitNameTwoLines(currentHabit.name);
+    const statusIcon = currentHabit.completed ? "✓" : "○";
+    const statusText = currentHabit.completed ? "Completed" : "Incomplete";
 
     logger.trace("feedback:updateWithHabit", {
       context: state.id,
@@ -701,14 +707,59 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       habitName: currentHabit.name,
       habitCompleted: currentHabit.completed,
       habitPosition,
+      habitNameParts,
     });
 
     await state.action.setFeedback({
-      heading: { value: habitPosition },
-      value: { value: `${status} ${habitTitle}` },
-      progress: (state.currentHabitIndex + 1) / state.summary.allHabits.length,
+      heading: { value: `Habit ${habitPosition}` },
+      value: { value: `${statusIcon} ${habitNameParts.line1}` },
+      value2: { value: habitNameParts.line2 },
+      time: { value: statusText },
     });
-    await state.action.setTitle(`Habit: ${status} ${habitTitle}`);
+    await state.action.setTitle(`Habit: ${statusIcon} ${habitNameParts.line1}`);
+  }
+
+  private formatHabitNameTwoLines(name: string): { line1: string; line2: string } {
+    // Split long habit names across two lines
+    const maxLineLength = 18; // Slightly shorter to account for status icon
+    
+    if (name.length <= maxLineLength) {
+      return { line1: name, line2: "" };
+    }
+    
+    // Try to split at a natural break point (space, dash, etc.)
+    const words = name.split(/[\s\-_]/);
+    let line1 = "";
+    let line2 = "";
+    
+    for (const word of words) {
+      const testLine1 = line1 ? `${line1} ${word}` : word;
+      
+      if (testLine1.length <= maxLineLength) {
+        line1 = testLine1;
+      } else {
+        // Start second line
+        line2 = words.slice(words.indexOf(word)).join(" ");
+        break;
+      }
+    }
+    
+    // If second line is too long, truncate it
+    if (line2.length > maxLineLength) {
+      line2 = line2.substring(0, maxLineLength - 3) + "...";
+    }
+    
+    // If we couldn't split naturally, force split
+    if (!line2 && line1.length > maxLineLength) {
+      line2 = line1.substring(maxLineLength);
+      line1 = line1.substring(0, maxLineLength);
+      
+      if (line2.length > maxLineLength) {
+        line2 = line2.substring(0, maxLineLength - 3) + "...";
+      }
+    }
+    
+    return { line1, line2 };
   }
 
   private truncateTitle(title: string, maxLength: number = 18): string {

@@ -34,7 +34,8 @@ const logger = streamDeck.logger.createScope("ActiveTasksDialAction");
 const INITIAL_FEEDBACK = {
   heading: { value: "Active Tasks" },
   value: { value: "Loading..." },
-  progress: 0,
+  value2: { value: "" },
+  time: { value: "" },
 } as const;
 
 @action({ UUID: "com.tom-kregenbild.notion-tasks.active.dial" })
@@ -242,7 +243,8 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     await state.action.setFeedback({
       heading: { value: "Active Tasks" },
       value: { value: `${active} / ${total}` },
-      progress: ratio,
+      value2: { value: "" },
+      time: { value: `${completed} completed` },
     });
     await state.action.setTitle(title);
   }
@@ -260,21 +262,66 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     }
 
     const taskPosition = `${state.currentTaskIndex + 1}/${summary.activeTasks.length}`;
-    const taskTitle = this.truncateTitle(currentTask.title);
-
+    const taskNameParts = this.formatTaskNameTwoLines(currentTask.title);
+    
     logger.trace("feedback:updateWithTask", {
       context: state.id,
       taskIndex: state.currentTaskIndex,
       taskTitle: currentTask.title,
       taskPosition,
+      taskNameParts,
     });
 
     await state.action.setFeedback({
-      heading: { value: taskPosition },
-      value: { value: taskTitle },
-      progress: (state.currentTaskIndex + 1) / summary.activeTasks.length,
+      heading: { value: `Task ${taskPosition}` },
+      value: { value: taskNameParts.line1 },
+      value2: { value: taskNameParts.line2 },
+      time: { value: currentTask.priority || "" },
     });
-    await state.action.setTitle(`Task: ${taskTitle}`);
+    await state.action.setTitle(`Task: ${taskNameParts.line1}`);
+  }
+
+  private formatTaskNameTwoLines(name: string): { line1: string; line2: string } {
+    // Split long task names across two lines
+    const maxLineLength = 20;
+    
+    if (name.length <= maxLineLength) {
+      return { line1: name, line2: "" };
+    }
+    
+    // Try to split at a natural break point (space, dash, etc.)
+    const words = name.split(/[\s\-_]/);
+    let line1 = "";
+    let line2 = "";
+    
+    for (const word of words) {
+      const testLine1 = line1 ? `${line1} ${word}` : word;
+      
+      if (testLine1.length <= maxLineLength) {
+        line1 = testLine1;
+      } else {
+        // Start second line
+        line2 = words.slice(words.indexOf(word)).join(" ");
+        break;
+      }
+    }
+    
+    // If second line is too long, truncate it
+    if (line2.length > maxLineLength) {
+      line2 = line2.substring(0, maxLineLength - 3) + "...";
+    }
+    
+    // If we couldn't split naturally, force split
+    if (!line2 && line1.length > maxLineLength) {
+      line2 = line1.substring(maxLineLength);
+      line1 = line1.substring(0, maxLineLength);
+      
+      if (line2.length > maxLineLength) {
+        line2 = line2.substring(0, maxLineLength - 3) + "...";
+      }
+    }
+    
+    return { line1, line2 };
   }
 
   private truncateTitle(title: string, maxLength: number = 20): string {
