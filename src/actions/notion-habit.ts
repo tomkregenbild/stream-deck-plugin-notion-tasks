@@ -40,6 +40,7 @@ export type HabitSettings = {
     checkbox?: {};
     rich_text?: {};
     title?: {};
+    number?: {};
   }>;
   _dbPropertiesError?: string;
   _triggerPropertyFetch?: number;
@@ -54,12 +55,13 @@ interface NormalizedHabitSettings {
     checkbox?: {};
     rich_text?: {};
     title?: {};
+    number?: {};
   }>;
 }
 
 interface HabitRecord {
   id: string;
-  columnValue?: boolean | string;
+  columnValue?: boolean | string | number;
   columnType: string;
 }
 
@@ -154,7 +156,7 @@ class HabitCoordinator {
         await state.action.showAlert();
       }
     } else {
-      // For other column types, just show OK (no action)
+      // For other column types (text, number, title), just show OK (no action)
       await state.action.showOk();
     }
   }
@@ -288,7 +290,7 @@ class HabitCoordinator {
       const record = results[0];
       const columnData = record.properties[settings.columnProp];
       
-      let columnValue: boolean | string | undefined;
+      let columnValue: boolean | string | number | undefined;
       
       if (columnType === "checkbox") {
         columnValue = columnData?.checkbox ?? false;
@@ -298,6 +300,8 @@ class HabitCoordinator {
       } else if (columnType === "title") {
         const title = columnData?.title || [];
         columnValue = title.map((t: any) => t.plain_text || "").join("");
+      } else if (columnType === "number") {
+        columnValue = columnData?.number ?? undefined;
       } else {
         columnValue = "Unsupported column type";
       }
@@ -395,7 +399,18 @@ class HabitCoordinator {
         if (text.trim()) {
           title = wrapText(text);
         } else {
-          title = wrapText("Empty");
+          title = wrapText("Todo");
+        }
+      } else if (columnType === "number") {
+        descriptor = BASE_VISUALS["habit-text"];
+        descriptor = { ...descriptor, label: habitName }; // Use habit name as label
+        if (columnValue !== undefined && columnValue !== null) {
+          // Format number appropriately
+          const numValue = Number(columnValue);
+          const formattedNumber = Number.isInteger(numValue) ? numValue.toString() : numValue.toFixed(2).replace(/\.?0+$/, '');
+          title = wrapText(formattedNumber);
+        } else {
+          title = wrapText("Todo");
         }
       } else {
         descriptor = BASE_VISUALS.error;

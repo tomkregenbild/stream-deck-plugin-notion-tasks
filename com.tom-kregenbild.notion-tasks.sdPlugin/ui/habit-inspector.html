@@ -20,7 +20,7 @@
         <sdpi-select setting="columnProp" disabled>
             <option value="">Loading properties...</option>
         </sdpi-select>
-        <sdpi-item-description>Select the column you want to track. Checkbox columns can be toggled, text columns show current value or empty status.</sdpi-item-description>
+        <sdpi-item-description>Select the column you want to track. Checkbox columns can be toggled, text and number columns show current value or Todo if empty.</sdpi-item-description>
     </sdpi-item>
 
     <script>
@@ -92,7 +92,7 @@
             columnSelect.appendChild(new Option('Select a column...', ''));
 
             // Populate properties - filter for supported types
-            const supportedTypes = ['checkbox', 'rich_text', 'title'];
+            const supportedTypes = ['checkbox', 'rich_text', 'title', 'number'];
             let hasOptions = false;
 
             for (const [name, prop] of Object.entries(properties)) {
@@ -104,7 +104,7 @@
             }
 
             if (!hasOptions) {
-                columnSelect.appendChild(new Option('No supported columns found (checkbox, text, or title)', ''));
+                columnSelect.appendChild(new Option('No supported columns found (checkbox, text, title, or number)', ''));
                 columnSelect.disabled = true;
                 return;
             }
