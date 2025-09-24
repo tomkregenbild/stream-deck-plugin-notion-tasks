@@ -18,7 +18,8 @@ import {
   type NotionSettings,
 } from "./notion-today";
 
-const LAYOUT_PATH = "layouts/active-summary.touch-layout.json";
+const SUMMARY_LAYOUT_PATH = "layouts/active-summary.touch-layout.json";
+const DETAIL_LAYOUT_PATH = "layouts/active-detail.touch-layout.json";
 
 interface ContextState {
   id: string;
@@ -34,8 +35,7 @@ const logger = streamDeck.logger.createScope("ActiveTasksDialAction");
 const INITIAL_FEEDBACK = {
   heading: { value: "Active Tasks" },
   value: { value: "Loading..." },
-  value2: { value: "" },
-  time: { value: "" },
+  progress: 0,
 } as const;
 
 @action({ UUID: "com.tom-kregenbild.notion-tasks.active.dial" })
@@ -117,6 +117,8 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
       // Currently in summary mode, enter detail mode
       state.isInDetailMode = true;
       state.currentTaskIndex = direction === "next" ? 0 : totalTasks - 1;
+      // Switch to detail layout
+      await this.switchToLayout(state, DETAIL_LAYOUT_PATH);
     } else {
       // Currently in detail mode, navigate through tasks
       if (direction === "next") {
@@ -130,6 +132,8 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
             direction,
             totalTasks
           });
+          // Switch back to summary layout
+          await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
           await this.updateFeedback(state, summary);
           return;
         }
@@ -144,6 +148,8 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
             direction,
             totalTasks
           });
+          // Switch back to summary layout
+          await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
           await this.updateFeedback(state, summary);
           return;
         }
@@ -208,19 +214,30 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     }
   }
 
-  private async ensureLayout(state: ContextState): Promise<void> {
+  private async ensureLayout(state: ContextState, layoutPath: string = SUMMARY_LAYOUT_PATH): Promise<void> {
     if (state.layoutApplied) {
       return;
     }
 
     try {
-      logger.trace("layout:apply", { context: state.id, layout: LAYOUT_PATH });
-      await state.action.setFeedbackLayout(LAYOUT_PATH);
+      logger.trace("layout:apply", { context: state.id, layout: layoutPath });
+      await state.action.setFeedbackLayout(layoutPath);
       state.layoutApplied = true;
       logger.trace("layout:applied", { context: state.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error("layout:error", { context: state.id, layout: LAYOUT_PATH, message });
+      logger.error("layout:error", { context: state.id, layout: layoutPath, message });
+    }
+  }
+
+  private async switchToLayout(state: ContextState, layoutPath: string): Promise<void> {
+    try {
+      logger.trace("layout:switch", { context: state.id, layout: layoutPath });
+      await state.action.setFeedbackLayout(layoutPath);
+      logger.trace("layout:switched", { context: state.id });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("layout:switchError", { context: state.id, layout: layoutPath, message });
     }
   }
 
@@ -243,8 +260,7 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     await state.action.setFeedback({
       heading: { value: "Active Tasks" },
       value: { value: `${active} / ${total}` },
-      value2: { value: "" },
-      time: { value: `${completed} completed` },
+      progress: ratio,
     });
     await state.action.setTitle(title);
   }

@@ -15,7 +15,8 @@ import streamDeck from "@elgato/streamdeck";
 
 import { NotionClient } from "../notion/database-helpers";
 
-const LAYOUT_PATH = "layouts/habit-summary.touch-layout.json";
+const SUMMARY_LAYOUT_PATH = "layouts/habit-summary.touch-layout.json";
+const DETAIL_LAYOUT_PATH = "layouts/habit-detail.touch-layout.json";
 
 const logger = streamDeck.logger.createScope("HabitDialAction");
 
@@ -88,8 +89,7 @@ interface ContextState {
 const INITIAL_FEEDBACK = {
   heading: { value: "Habits" },
   value: { value: "Loading..." },
-  value2: { value: "" },
-  time: { value: "" },
+  progress: 0,
 } as const;
 
 function isJsonObject(value: JsonValue): value is JsonObject {
@@ -197,6 +197,8 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       // Currently in summary mode, enter detail mode
       state.isInDetailMode = true;
       state.currentHabitIndex = direction === "next" ? 0 : totalHabits - 1;
+      // Switch to detail layout
+      await this.switchToLayout(state, DETAIL_LAYOUT_PATH);
     } else {
       // Currently in detail mode, navigate through habits
       if (direction === "next") {
@@ -210,6 +212,8 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
             direction,
             totalHabits
           });
+          // Switch back to summary layout
+          await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
           await this.updateFeedback(state);
           return;
         }
@@ -224,6 +228,8 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
             direction,
             totalHabits
           });
+          // Switch back to summary layout
+          await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
           await this.updateFeedback(state);
           return;
         }
@@ -351,19 +357,30 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
     }
   }
 
-  private async ensureLayout(state: ContextState): Promise<void> {
+  private async ensureLayout(state: ContextState, layoutPath: string = SUMMARY_LAYOUT_PATH): Promise<void> {
     if (state.layoutApplied) {
       return;
     }
 
     try {
-      logger.trace("layout:apply", { context: state.id, layout: LAYOUT_PATH });
-      await state.action.setFeedbackLayout(LAYOUT_PATH);
+      logger.trace("layout:apply", { context: state.id, layout: layoutPath });
+      await state.action.setFeedbackLayout(layoutPath);
       state.layoutApplied = true;
       logger.trace("layout:applied", { context: state.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error("layout:error", { context: state.id, layout: LAYOUT_PATH, message });
+      logger.error("layout:error", { context: state.id, layout: layoutPath, message });
+    }
+  }
+
+  private async switchToLayout(state: ContextState, layoutPath: string): Promise<void> {
+    try {
+      logger.trace("layout:switch", { context: state.id, layout: layoutPath });
+      await state.action.setFeedbackLayout(layoutPath);
+      logger.trace("layout:switched", { context: state.id });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("layout:switchError", { context: state.id, layout: layoutPath, message });
     }
   }
 
@@ -645,8 +662,7 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       await state.action.setFeedback({
         heading: { value: "Habits" },
         value: { value: "Error" },
-        value2: { value: "" },
-        time: { value: "" },
+        progress: 0,
       });
       await state.action.setTitle(`Error: ${state.error}`);
       return;
@@ -656,8 +672,7 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       await state.action.setFeedback({
         heading: { value: "Habits" },
         value: { value: "Loading..." },
-        value2: { value: "" },
-        time: { value: "" },
+        progress: 0,
       });
       await state.action.setTitle("Loading habits...");
       return;
@@ -666,7 +681,6 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
     const { completed, total } = state.summary;
     const ratio = total > 0 ? this.clampRatio(completed / total) : 0;
     const title = total > 0 ? `${completed} of ${total} habits` : "No habits";
-    const percentageText = total > 0 ? `${Math.round(ratio * 100)}% complete` : "";
 
     logger.trace("feedback:update", {
       context: state.id,
@@ -678,8 +692,7 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
     await state.action.setFeedback({
       heading: { value: "Habits" },
       value: { value: `${completed} / ${total}` },
-      value2: { value: "" },
-      time: { value: percentageText },
+      progress: ratio,
     });
     await state.action.setTitle(title);
   }

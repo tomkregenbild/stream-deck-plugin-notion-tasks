@@ -14,8 +14,16 @@ const staticAssets = [
 		target: path.join(sdPlugin, "layouts", "active-summary.touch-layout.json"),
 	},
 	{
+		source: "layouts/active-detail.touch-layout.json",
+		target: path.join(sdPlugin, "layouts", "active-detail.touch-layout.json"),
+	},
+	{
 		source: "layouts/habit-summary.touch-layout.json",
 		target: path.join(sdPlugin, "layouts", "habit-summary.touch-layout.json"),
+	},
+	{
+		source: "layouts/habit-detail.touch-layout.json",
+		target: path.join(sdPlugin, "layouts", "habit-detail.touch-layout.json"),
 	},
 	{
 		source: "layouts/next-meeting.touch-layout.json",

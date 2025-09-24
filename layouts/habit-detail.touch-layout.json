@@ -1,0 +1,70 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+  "id": "notion-habit-detail",
+  "items": [
+    {
+      "key": "heading",
+      "type": "text",
+      "rect": [
+        4,
+        6,
+        136,
+        16
+      ],
+      "font": {
+        "size": 13,
+        "weight": 300
+      },
+      "alignment": "center",
+      "color": "#a78bfa"
+    },
+    {
+      "key": "value",
+      "type": "text",
+      "rect": [
+        4,
+        24,
+        136,
+        18
+      ],
+      "font": {
+        "size": 12,
+        "weight": 600
+      },
+      "alignment": "center",
+      "color": "#ffffff"
+    },
+    {
+      "key": "value2",
+      "type": "text",
+      "rect": [
+        4,
+        42,
+        136,
+        18
+      ],
+      "font": {
+        "size": 12,
+        "weight": 600
+      },
+      "alignment": "center",
+      "color": "#ffffff"
+    },
+    {
+      "key": "time",
+      "type": "text",
+      "rect": [
+        4,
+        64,
+        136,
+        18
+      ],
+      "font": {
+        "size": 11,
+        "weight": 500
+      },
+      "alignment": "center",
+      "color": "#9ca3af"
+    }
+  ]
+}
