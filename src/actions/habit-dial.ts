@@ -8,6 +8,7 @@ import {
   type SendToPluginEvent,
   type JsonValue,
   type JsonObject,
+  type DialRotateEvent,
 } from "@elgato/streamdeck";
 
 import streamDeck from "@elgato/streamdeck";
@@ -54,9 +55,22 @@ interface HabitSummary {
   total: number;
 }
 
+interface HabitItem {
+  name: string;
+  completed: boolean;
+  type: 'checkbox' | 'rich_text' | 'title' | 'number';
+  value?: any;
+}
+
 interface HabitRecord {
   id: string;
   properties: Record<string, any>;
+  habits: HabitItem[];
+}
+
+interface ExtendedHabitSummary extends HabitSummary {
+  records: HabitRecord[];
+  allHabits: HabitItem[];
 }
 
 interface ContextState {
@@ -65,8 +79,9 @@ interface ContextState {
   layoutApplied: boolean;
   settings: HabitDialSettings;
   normalized: NormalizedHabitDialSettings;
-  summary?: HabitSummary;
+  summary?: ExtendedHabitSummary;
   error?: string;
+  currentHabitIndex: number;
 }
 
 const INITIAL_FEEDBACK = {
@@ -82,8 +97,8 @@ function isJsonObject(value: JsonValue): value is JsonObject {
 @action({ UUID: "com.tom-kregenbild.notion-tasks.habits.dial" })
 export class HabitDialAction extends SingletonAction<HabitDialSettings> {
   private readonly contexts = new Map<string, ContextState>();
-  private cache = new Map<string, { summary?: HabitSummary; error?: string; timestamp: number }>();
-  private inflight = new Map<string, Promise<{ summary?: HabitSummary; error?: string }>>();
+  private cache = new Map<string, { summary?: ExtendedHabitSummary; error?: string; timestamp: number }>();
+  private inflight = new Map<string, Promise<{ summary?: ExtendedHabitSummary; error?: string }>>();
 
   override async onWillAppear(ev: WillAppearEvent<HabitDialSettings>): Promise<void> {
     const action = ev.action as unknown as DialAction<HabitDialSettings>;
@@ -96,6 +111,7 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       layoutApplied: false,
       settings,
       normalized,
+      currentHabitIndex: 0,
     };
     this.contexts.set(state.id, state);
 
@@ -152,6 +168,47 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
 
     logger.debug("onWillDisappear", { context: state.id });
     this.contexts.delete(state.id);
+  }
+
+  override async onDialRotate(ev: DialRotateEvent<HabitDialSettings>): Promise<void> {
+    const state = this.contexts.get(ev.action.id);
+    if (!state) {
+      logger.debug("onDialRotate:missing", { context: ev.action.id });
+      return;
+    }
+
+    if (!state.summary || !state.summary.allHabits || state.summary.allHabits.length === 0) {
+      logger.debug("onDialRotate:noHabits", { context: state.id });
+      return;
+    }
+
+    if (state.summary.allHabits.length === 1) {
+      logger.debug("onDialRotate:singleHabit", { context: state.id });
+      return;
+    }
+
+    const direction = ev.payload.ticks > 0 ? "next" : "previous";
+    const oldIndex = state.currentHabitIndex;
+
+    if (direction === "next") {
+      // Turn right: go to next habit
+      state.currentHabitIndex = (state.currentHabitIndex + 1) % state.summary.allHabits.length;
+    } else {
+      // Turn left: go to previous habit
+      state.currentHabitIndex = state.currentHabitIndex === 0 
+        ? state.summary.allHabits.length - 1 
+        : state.currentHabitIndex - 1;
+    }
+
+    logger.debug("onDialRotate", { 
+      context: state.id, 
+      direction, 
+      oldIndex, 
+      newIndex: state.currentHabitIndex,
+      totalHabits: state.summary.allHabits.length
+    });
+
+    await this.updateFeedbackWithCurrentHabit(state);
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<HabitDialSettings>): Promise<void> {
@@ -349,7 +406,7 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
     await this.updateFeedback(state);
   }
 
-  private async fetchHabitSummary(settings: NormalizedHabitDialSettings): Promise<{ summary?: HabitSummary; error?: string }> {
+  private async fetchHabitSummary(settings: NormalizedHabitDialSettings): Promise<{ summary?: ExtendedHabitSummary; error?: string }> {
     logger.debug("fetchHabitSummary called", { 
       hasToken: !!settings.token,
       hasDb: !!settings.db,
@@ -407,7 +464,7 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       const results = data.results || [];
 
       if (results.length === 0) {
-        return { summary: { completed: 0, total: 0 } };
+        return { summary: { completed: 0, total: 0, records: [], allHabits: [] } };
       }
 
       // Get all habit columns from the database (exclude system columns and Date)
@@ -457,9 +514,17 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
 
       let totalHabits = 0;
       let completedHabits = 0;
+      const records: HabitRecord[] = [];
+      const allHabits: HabitItem[] = [];
 
       // Process each record
       for (const record of results) {
+        const habitRecord: HabitRecord = {
+          id: record.id,
+          properties: record.properties,
+          habits: []
+        };
+
         for (const columnName of habitColumns) {
           totalHabits++;
           
@@ -467,33 +532,64 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
           const dbProperty = settings._dbProperties[columnName];
           
           if (!dbProperty || !columnData) {
+            const habitItem: HabitItem = {
+              name: columnName,
+              completed: false,
+              type: dbProperty?.type as any || 'checkbox'
+            };
+            habitRecord.habits.push(habitItem);
+            allHabits.push(habitItem);
             continue; // Skip unknown properties, count as incomplete
           }
 
           const columnType = dbProperty.type;
           let isCompleted = false;
+          let value: any = undefined;
 
           if (columnType === "checkbox") {
             isCompleted = columnData?.checkbox === true;
+            value = columnData?.checkbox;
           } else if (columnType === "rich_text") {
             const richText = columnData?.rich_text || [];
             const textValue = richText.map((rt: any) => rt.plain_text || "").join("").trim();
             isCompleted = textValue.length > 0;
+            value = textValue;
           } else if (columnType === "title") {
             const title = columnData?.title || [];
             const titleValue = title.map((t: any) => t.plain_text || "").join("").trim();
             isCompleted = titleValue.length > 0;
+            value = titleValue;
           } else if (columnType === "number") {
             isCompleted = columnData?.number !== null && columnData?.number !== undefined;
+            value = columnData?.number;
           }
+
+          const habitItem: HabitItem = {
+            name: columnName,
+            completed: isCompleted,
+            type: columnType as any,
+            value
+          };
+
+          habitRecord.habits.push(habitItem);
+          allHabits.push(habitItem);
 
           if (isCompleted) {
             completedHabits++;
           }
         }
+
+        records.push(habitRecord);
       }
 
-      return { summary: { completed: completedHabits, total: totalHabits } };
+      return { 
+        summary: { 
+          completed: completedHabits, 
+          total: totalHabits,
+          records,
+          allHabits
+        } 
+      };
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -540,6 +636,45 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       progress: ratio,
     });
     await state.action.setTitle(title);
+  }
+
+  private async updateFeedbackWithCurrentHabit(state: ContextState): Promise<void> {
+    if (!state.summary || !state.summary.allHabits || state.summary.allHabits.length === 0) {
+      await this.updateFeedback(state);
+      return;
+    }
+
+    const currentHabit = state.summary.allHabits[state.currentHabitIndex];
+    if (!currentHabit) {
+      await this.updateFeedback(state);
+      return;
+    }
+
+    const habitPosition = `${state.currentHabitIndex + 1}/${state.summary.allHabits.length}`;
+    const habitTitle = this.truncateTitle(currentHabit.name);
+    const status = currentHabit.completed ? "✓" : "○";
+
+    logger.trace("feedback:updateWithHabit", {
+      context: state.id,
+      habitIndex: state.currentHabitIndex,
+      habitName: currentHabit.name,
+      habitCompleted: currentHabit.completed,
+      habitPosition,
+    });
+
+    await state.action.setFeedback({
+      heading: { value: habitPosition },
+      value: { value: `${status} ${habitTitle}` },
+      progress: (state.currentHabitIndex + 1) / state.summary.allHabits.length,
+    });
+    await state.action.setTitle(`Habit: ${status} ${habitTitle}`);
+  }
+
+  private truncateTitle(title: string, maxLength: number = 18): string {
+    if (title.length <= maxLength) {
+      return title;
+    }
+    return title.substring(0, maxLength - 3) + "...";
   }
 
   private clampRatio(value: number): number {

@@ -5,6 +5,7 @@ import {
   type WillAppearEvent,
   type WillDisappearEvent,
   type DidReceiveSettingsEvent,
+  type DialRotateEvent,
 } from "@elgato/streamdeck";
 
 import streamDeck from "@elgato/streamdeck";
@@ -24,6 +25,7 @@ interface ContextState {
   action: DialAction<NotionSettings>;
   layoutApplied: boolean;
   unsubscribe?: () => void;
+  currentTaskIndex: number;
 }
 
 const logger = streamDeck.logger.createScope("ActiveTasksDialAction");
@@ -44,6 +46,7 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
       id: action.id,
       action,
       layoutApplied: false,
+      currentTaskIndex: 0,
     };
     this.contexts.set(state.id, state);
 
@@ -75,6 +78,48 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     logger.debug("onWillDisappear", { context: state.id });
     state.unsubscribe?.();
     this.contexts.delete(state.id);
+  }
+
+  override async onDialRotate(ev: DialRotateEvent<NotionSettings>): Promise<void> {
+    const state = this.contexts.get(ev.action.id);
+    if (!state) {
+      logger.debug("onDialRotate:missing", { context: ev.action.id });
+      return;
+    }
+
+    const summary = getNotionTodaySummary();
+    if (!summary || !summary.activeTasks || summary.activeTasks.length === 0) {
+      logger.debug("onDialRotate:noTasks", { context: state.id });
+      return;
+    }
+
+    if (summary.activeTasks.length === 1) {
+      logger.debug("onDialRotate:singleTask", { context: state.id });
+      return;
+    }
+
+    const direction = ev.payload.ticks > 0 ? "next" : "previous";
+    const oldIndex = state.currentTaskIndex;
+
+    if (direction === "next") {
+      // Turn right: go to next task
+      state.currentTaskIndex = (state.currentTaskIndex + 1) % summary.activeTasks.length;
+    } else {
+      // Turn left: go to previous task
+      state.currentTaskIndex = state.currentTaskIndex === 0 
+        ? summary.activeTasks.length - 1 
+        : state.currentTaskIndex - 1;
+    }
+
+    logger.debug("onDialRotate", { 
+      context: state.id, 
+      direction, 
+      oldIndex, 
+      newIndex: state.currentTaskIndex,
+      totalTasks: summary.activeTasks.length
+    });
+
+    await this.updateFeedbackWithCurrentTask(state, summary);
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<NotionSettings>): Promise<void> {
@@ -161,6 +206,43 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
       progress: ratio,
     });
     await state.action.setTitle(title);
+  }
+
+  private async updateFeedbackWithCurrentTask(state: ContextState, summary: TaskSummary): Promise<void> {
+    if (!summary.activeTasks || summary.activeTasks.length === 0) {
+      await this.updateFeedback(state, summary);
+      return;
+    }
+
+    const currentTask = summary.activeTasks[state.currentTaskIndex];
+    if (!currentTask) {
+      await this.updateFeedback(state, summary);
+      return;
+    }
+
+    const taskPosition = `${state.currentTaskIndex + 1}/${summary.activeTasks.length}`;
+    const taskTitle = this.truncateTitle(currentTask.title);
+
+    logger.trace("feedback:updateWithTask", {
+      context: state.id,
+      taskIndex: state.currentTaskIndex,
+      taskTitle: currentTask.title,
+      taskPosition,
+    });
+
+    await state.action.setFeedback({
+      heading: { value: taskPosition },
+      value: { value: taskTitle },
+      progress: (state.currentTaskIndex + 1) / summary.activeTasks.length,
+    });
+    await state.action.setTitle(`Task: ${taskTitle}`);
+  }
+
+  private truncateTitle(title: string, maxLength: number = 20): string {
+    if (title.length <= maxLength) {
+      return title;
+    }
+    return title.substring(0, maxLength - 3) + "...";
   }
 }
 
