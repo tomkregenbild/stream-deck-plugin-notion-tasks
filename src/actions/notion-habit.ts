@@ -576,15 +576,33 @@ function buildKeyImage(descriptor: KeyVisualDescriptor, habitName: string, lines
 
   const sanitizedLines = lines.length > 0 ? lines : [" "];
 
-  const labelFontSize = 16;
-  const labelY = 30;
+  const labelFontSize = 12; // Reduced font size to fit more text
+  const labelMaxChars = 14; // Max characters per label line (increased for better fit)
+  const labelMaxLines = 2; // Max lines for label
   const labelX = 15;
-  const titleFontSize = 14;
-  const titleStartY = 60;
-  const lineHeight = titleFontSize + 6;
+  const labelStartY = 26; // Adjusted start position
+  const labelLineHeight = 13; // Line height for label
 
+  const titleFontSize = 14;
+  const titleStartY = 70; // Moved down to make room for multi-line label
+  const titleLineHeight = titleFontSize + 6;
+
+  // Wrap habit name for multi-line label
+  const wrappedLabelLines = wrapText(habitName, labelMaxChars, labelMaxLines).split('\n');
+  
+  // Calculate dynamic accent bar height based on label lines
+  const accentBarY = labelStartY - 6;
+  const accentBarHeight = Math.max(16, wrappedLabelLines.length * labelLineHeight + 8);
+  
+  // Generate label lines
+  const labelLines = wrappedLabelLines.map((line, index) => {
+    const y = labelStartY + index * labelLineHeight;
+    return `<text x="${labelX}" y="${y}" text-anchor="start" font-family="Segoe UI, system-ui, sans-serif" font-size="${labelFontSize}" font-weight="600" fill="${labelColor}">${escapeSvgText(line)}</text>`;
+  }).join("");
+
+  // Generate title lines
   const titleLines = sanitizedLines.map((line, index) => {
-    const y = titleStartY + index * lineHeight;
+    const y = titleStartY + index * titleLineHeight;
     return `<text x="${width / 2}" y="${y}" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="${titleFontSize}" font-weight="700" fill="${titleColor}">${escapeSvgText(line)}</text>`;
   }).join("");
 
@@ -598,8 +616,8 @@ function buildKeyImage(descriptor: KeyVisualDescriptor, habitName: string, lines
       </defs>
       <rect width="${width}" height="${height}" rx="24" fill="url(#${gradientId})" />
       <rect x="4" y="4" width="${width - 8}" height="${height - 8}" rx="20" stroke="${border}" stroke-width="2" fill="none" />
-      <rect x="18" y="26" width="${width - 36}" height="16" rx="8" fill="${accent}" opacity="0.6" />
-      <text x="${labelX}" y="${labelY}" text-anchor="start" font-family="Segoe UI, system-ui, sans-serif" font-size="${labelFontSize}" font-weight="500" fill="${labelColor}">${escapeSvgText(label)}</text>
+      <rect x="18" y="${accentBarY}" width="${width - 36}" height="${accentBarHeight}" rx="8" fill="${accent}" opacity="0.6" />
+      ${labelLines}
       ${titleLines}
     </svg>`;
 
