@@ -88,6 +88,7 @@ interface ContextState {
   currentHabitIndex: number;
   isInDetailMode: boolean;
   dialPressStartTime?: number;
+  longPressTimeout?: NodeJS.Timeout;
 }
 
 const INITIAL_FEEDBACK = {
@@ -363,10 +364,39 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       return;
     }
     
+    // Clear any existing timeout
+    if (state.longPressTimeout) {
+      clearTimeout(state.longPressTimeout);
+    }
+    
     // Record the start time for long press detection
     state.dialPressStartTime = Date.now();
     
-    logger.debug("onDialDown:triggered", { context: ev.action.id, startTime: state.dialPressStartTime });
+    // Only set up long press timeout if we're in detail mode
+    if (state.isInDetailMode) {
+      const longPressThreshold = 1000; // 1 second
+      
+      state.longPressTimeout = setTimeout(async () => {
+        // Long press triggered - automatically return to summary
+        logger.debug("onDialDown:longPressTriggered", { context: state.id });
+        
+        state.isInDetailMode = false;
+        state.currentHabitIndex = 0;
+        await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
+        
+        // Refresh the summary display
+        await this.fetchAndUpdate(state, true);
+        
+        // Clear the timeout reference
+        state.longPressTimeout = undefined;
+      }, longPressThreshold);
+    }
+    
+    logger.debug("onDialDown:triggered", { 
+      context: ev.action.id, 
+      startTime: state.dialPressStartTime,
+      setTimer: state.isInDetailMode
+    });
   }
 
   override async onDialUp(ev: DialUpEvent<HabitDialSettings>): Promise<void> {
@@ -382,27 +412,30 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
     
     logger.debug("onDialUp:triggered", { 
       context: ev.action.id, 
-      pressDuration, 
-      isLongPress: pressDuration >= longPressThreshold,
-      isInDetailMode: state.isInDetailMode
+      pressDuration,
+      hadTimeout: !!state.longPressTimeout
     });
 
-    // Clear the press start time
+    // Clear the press start time and timeout
     state.dialPressStartTime = undefined;
-
-    if (pressDuration >= longPressThreshold && state.isInDetailMode) {
-      // Long press: return to summary
-      logger.debug("onDialUp:longPressReturnToSummary", { context: state.id });
+    
+    if (state.longPressTimeout) {
+      // Cancel the long press timeout - it didn't trigger
+      clearTimeout(state.longPressTimeout);
+      state.longPressTimeout = undefined;
       
-      state.isInDetailMode = false;
-      state.currentHabitIndex = 0;
-      await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
-      
-      // Refresh the summary display
-      await this.fetchAndUpdate(state, true);
-    } else if (pressDuration < longPressThreshold) {
-      // Short press: execute tap action
-      await this.onTouchTap(ev as any);
+      // Since we cancelled the timeout, this was a short press
+      if (pressDuration < longPressThreshold) {
+        logger.debug("onDialUp:shortPress", { context: state.id });
+        await this.onTouchTap(ev as any);
+      }
+    } else {
+      // No timeout was set (not in detail mode) or timeout already triggered
+      // If no timeout was set and it's a short press, execute tap action
+      if (pressDuration < longPressThreshold) {
+        logger.debug("onDialUp:shortPressNoDetail", { context: state.id });
+        await this.onTouchTap(ev as any);
+      }
     }
   }
 
