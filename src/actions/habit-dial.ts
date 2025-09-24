@@ -87,6 +87,7 @@ interface ContextState {
   error?: string;
   currentHabitIndex: number;
   isInDetailMode: boolean;
+  dialPressStartTime?: number;
 }
 
 const INITIAL_FEEDBACK = {
@@ -356,10 +357,53 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
   }
 
   override async onDialDown(ev: DialDownEvent<HabitDialSettings>): Promise<void> {
-    logger.debug("onDialDown:triggered", { context: ev.action.id });
+    const state = this.contexts.get(ev.action.id);
+    if (!state) {
+      logger.debug("onDialDown:missing", { context: ev.action.id });
+      return;
+    }
     
-    // Use the same logic as onTouchTap for dial press
-    await this.onTouchTap(ev as any); // Cast since they have the same interface for our purposes
+    // Record the start time for long press detection
+    state.dialPressStartTime = Date.now();
+    
+    logger.debug("onDialDown:triggered", { context: ev.action.id, startTime: state.dialPressStartTime });
+  }
+
+  override async onDialUp(ev: DialUpEvent<HabitDialSettings>): Promise<void> {
+    const state = this.contexts.get(ev.action.id);
+    if (!state) {
+      logger.debug("onDialUp:missing", { context: ev.action.id });
+      return;
+    }
+
+    const endTime = Date.now();
+    const pressDuration = state.dialPressStartTime ? endTime - state.dialPressStartTime : 0;
+    const longPressThreshold = 1000; // 1 second
+    
+    logger.debug("onDialUp:triggered", { 
+      context: ev.action.id, 
+      pressDuration, 
+      isLongPress: pressDuration >= longPressThreshold,
+      isInDetailMode: state.isInDetailMode
+    });
+
+    // Clear the press start time
+    state.dialPressStartTime = undefined;
+
+    if (pressDuration >= longPressThreshold && state.isInDetailMode) {
+      // Long press: return to summary
+      logger.debug("onDialUp:longPressReturnToSummary", { context: state.id });
+      
+      state.isInDetailMode = false;
+      state.currentHabitIndex = 0;
+      await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
+      
+      // Refresh the summary display
+      await this.fetchAndUpdate(state, true);
+    } else if (pressDuration < longPressThreshold) {
+      // Short press: execute tap action
+      await this.onTouchTap(ev as any);
+    }
   }
 
   private async toggleHabitCheckbox(recordId: string, columnProp: string, token: string, currentValue: boolean): Promise<void> {

@@ -31,6 +31,7 @@ interface ContextState {
   unsubscribe?: () => void;
   currentTaskIndex: number;
   isInDetailMode: boolean;
+  dialPressStartTime?: number;
 }
 
 const logger = streamDeck.logger.createScope("ActiveTasksDialAction");
@@ -242,10 +243,55 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
   }
 
   override async onDialDown(ev: DialDownEvent<NotionSettings>): Promise<void> {
-    logger.debug("onDialDown:triggered", { context: ev.action.id });
+    const state = this.contexts.get(ev.action.id);
+    if (!state) {
+      logger.debug("onDialDown:missing", { context: ev.action.id });
+      return;
+    }
     
-    // Use the same logic as onTouchTap for dial press
-    await this.onTouchTap(ev as any); // Cast since they have the same interface for our purposes
+    // Record the start time for long press detection
+    state.dialPressStartTime = Date.now();
+    
+    logger.debug("onDialDown:triggered", { context: ev.action.id, startTime: state.dialPressStartTime });
+  }
+
+  override async onDialUp(ev: DialUpEvent<NotionSettings>): Promise<void> {
+    const state = this.contexts.get(ev.action.id);
+    if (!state) {
+      logger.debug("onDialUp:missing", { context: ev.action.id });
+      return;
+    }
+
+    const endTime = Date.now();
+    const pressDuration = state.dialPressStartTime ? endTime - state.dialPressStartTime : 0;
+    const longPressThreshold = 1000; // 1 second
+    
+    logger.debug("onDialUp:triggered", { 
+      context: ev.action.id, 
+      pressDuration, 
+      isLongPress: pressDuration >= longPressThreshold,
+      isInDetailMode: state.isInDetailMode
+    });
+
+    // Clear the press start time
+    state.dialPressStartTime = undefined;
+
+    if (pressDuration >= longPressThreshold && state.isInDetailMode) {
+      // Long press: return to summary
+      logger.debug("onDialUp:longPressReturnToSummary", { context: state.id });
+      
+      state.isInDetailMode = false;
+      state.currentTaskIndex = 0;
+      await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
+      
+      const summary = getNotionTodaySummary();
+      if (summary) {
+        await this.updateFeedback(state, summary);
+      }
+    } else if (pressDuration < longPressThreshold) {
+      // Short press: execute tap action
+      await this.onTouchTap(ev as any);
+    }
   }
 
   private async markTaskDone(taskId: string, settings: NotionSettings): Promise<void> {
