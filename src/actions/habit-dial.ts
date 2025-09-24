@@ -21,6 +21,8 @@ const logger = streamDeck.logger.createScope("HabitDialAction");
 export interface HabitDialSettings {
   token?: string;
   db?: string;
+  includeColumns?: string;
+  excludeColumns?: string;
   _dbProperties?: Record<string, { 
     type: string; 
     checkbox?: {};
@@ -36,6 +38,8 @@ export interface HabitDialSettings {
 interface NormalizedHabitDialSettings {
   token?: string;
   db?: string;
+  includeColumns?: string[];
+  excludeColumns?: string[];
   _dbProperties?: Record<string, { 
     type: string; 
     checkbox?: {};
@@ -407,7 +411,7 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       }
 
       // Get all habit columns from the database (exclude system columns and Date)
-      const habitColumns = Object.entries(settings._dbProperties)
+      const allHabitColumns = Object.entries(settings._dbProperties)
         .filter(([propertyName, propData]) => {
           // Skip system properties and the Date property used for filtering
           if (propertyName === "Date" || propertyName === "Created time" || propertyName === "Last edited time") {
@@ -418,6 +422,38 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
           return type === "checkbox" || type === "rich_text" || type === "title" || type === "number";
         })
         .map(([propertyName]) => propertyName);
+
+      // Apply include/exclude filtering
+      let habitColumns = allHabitColumns;
+      
+      // Apply include filter first (if specified)
+      if (settings.includeColumns && settings.includeColumns.length > 0) {
+        habitColumns = habitColumns.filter(columnName => 
+          settings.includeColumns!.includes(columnName)
+        );
+        logger.debug("Applied include filter", { 
+          includeColumns: settings.includeColumns,
+          filteredColumns: habitColumns
+        });
+      }
+      
+      // Apply exclude filter (takes precedence over include)
+      if (settings.excludeColumns && settings.excludeColumns.length > 0) {
+        habitColumns = habitColumns.filter(columnName => 
+          !settings.excludeColumns!.includes(columnName)
+        );
+        logger.debug("Applied exclude filter", { 
+          excludeColumns: settings.excludeColumns,
+          filteredColumns: habitColumns
+        });
+      }
+
+      logger.debug("Final habit columns for tracking", { 
+        totalAvailable: allHabitColumns.length,
+        finalColumns: habitColumns,
+        includeFilter: settings.includeColumns,
+        excludeFilter: settings.excludeColumns
+      });
 
       let totalHabits = 0;
       let completedHabits = 0;
@@ -527,9 +563,21 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
       return trimmed.length === 0 ? undefined : trimmed;
     };
 
+    const parseColumnList = (value?: string): string[] | undefined => {
+      if (!value || typeof value !== "string") return undefined;
+      const trimmed = value.trim();
+      if (trimmed.length === 0) return undefined;
+      return trimmed
+        .split(',')
+        .map(col => col.trim())
+        .filter(col => col.length > 0);
+    };
+
     return {
       token: trim(settings.token),
       db: trim(settings.db),
+      includeColumns: parseColumnList(settings.includeColumns),
+      excludeColumns: parseColumnList(settings.excludeColumns),
       _dbProperties: settings._dbProperties,
     };
   }

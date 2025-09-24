@@ -16,6 +16,16 @@
         <sdpi-item-description>Paste the habits database identifier (32 characters, without spaces).</sdpi-item-description>
     </sdpi-item>
 
+    <sdpi-item label="Include Columns (Optional)">
+        <sdpi-textfield setting="includeColumns" placeholder="Habit1, Habit2, Exercise"></sdpi-textfield>
+        <sdpi-item-description>Comma-separated list of columns to track (if empty, tracks all habit columns).</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Exclude Columns (Optional)">
+        <sdpi-textfield setting="excludeColumns" placeholder="Notes, Comments"></sdpi-textfield>
+        <sdpi-item-description>Comma-separated list of columns to exclude from tracking (takes precedence over include).</sdpi-item-description>
+    </sdpi-item>
+
     <script>
         console.log('PI: Habit Summary JavaScript file loaded!');
         const { streamDeckClient } = SDPIComponents;
