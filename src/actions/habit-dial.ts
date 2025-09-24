@@ -329,18 +329,20 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
 
       await this.toggleHabitCheckbox(recordId, columnProp, settings.token, currentHabit.completed);
       
-      // After toggling, return to summary mode and refresh
-      state.isInDetailMode = false;
-      state.currentHabitIndex = 0;
-      await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
+      // Update the habit's local state immediately for responsive UI
+      currentHabit.completed = !currentHabit.completed;
       
-      // Refresh the display
+      // Stay in detail mode and refresh just the current habit display
+      await this.updateFeedbackWithCurrentHabit(state);
+      
+      // Also update the summary data in the background
       await this.fetchAndUpdate(state, true);
 
       logger.debug("onTouchTap:habitToggled", { 
         context: state.id, 
         recordId,
-        habitName: currentHabit.name
+        habitName: currentHabit.name,
+        newValue: currentHabit.completed
       });
     } catch (error) {
       logger.error("onTouchTap:error", { 
