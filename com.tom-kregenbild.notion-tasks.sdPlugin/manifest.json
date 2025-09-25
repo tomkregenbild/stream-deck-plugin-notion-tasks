@@ -36,7 +36,7 @@
 				"TriggerDescription": {
 					"Rotate": "Navigate all tasks",
 					"Push": "Toggle task status",
-					"LongTouch": "Return to summary"
+					"LongTouch": "Return to summary and refresh data"
 				}
 			},
 			"States": [
@@ -88,7 +88,7 @@
 				"TriggerDescription": {
 					"Rotate": "Navigate habits",
 					"Push": "Toggle habit",
-					"LongTouch": "Return to summary"
+					"LongTouch": "Return to summary and refresh data"
 				}
 			},
 			"States": [

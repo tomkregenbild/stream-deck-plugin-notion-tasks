@@ -18,6 +18,7 @@ import { NotionClient } from "../notion/database-helpers";
 import {
   getNotionTodaySummary,
   subscribeToNotionSummary,
+  refreshNotionData,
   type NotionSettings,
 } from "./notion-today";
 
@@ -284,6 +285,10 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
         state.currentTaskIndex = 0;
         state.currentTaskStatusOverride = undefined; // Clear status override when returning to summary
         await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
+        
+        // Refresh all plugin data before updating the display
+        logger.debug("onDialDown:refreshingData", { context: state.id });
+        await refreshNotionData(true);
         
         const summary = getNotionTodaySummary();
         if (summary) {

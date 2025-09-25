@@ -341,7 +341,7 @@ class TaskCoordinator {
     }
   }
 
-  private async refresh(force = false): Promise<void> {
+  public async refresh(force = false): Promise<void> {
     logger.debug("Starting refresh", { force, contexts: this.contexts.size });
     
     if (this.contexts.size === 0) {
@@ -792,6 +792,10 @@ export function subscribeToNotionSummary(listener: SummaryListener): () => void 
   return () => {
     summaryListeners.delete(listener);
   };
+}
+
+export function refreshNotionData(force = false): Promise<void> {
+  return getCoordinator().refresh(force);
 }
 
 function notifySummaryListeners(summary: TaskSummary | undefined): void {

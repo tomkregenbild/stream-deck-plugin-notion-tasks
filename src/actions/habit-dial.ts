@@ -17,6 +17,7 @@ import {
 import streamDeck from "@elgato/streamdeck";
 
 import { NotionClient } from "../notion/database-helpers";
+import { refreshNotionData } from "./notion-today";
 
 const SUMMARY_LAYOUT_PATH = "layouts/habit-summary.touch-layout.json";
 const DETAIL_LAYOUT_PATH = "layouts/habit-detail.touch-layout.json";
@@ -384,8 +385,12 @@ export class HabitDialAction extends SingletonAction<HabitDialSettings> {
         state.currentHabitIndex = 0;
         await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
         
-        // Refresh the summary display
-        await this.fetchAndUpdate(state, true);
+        // Refresh both habit data and global plugin data
+        logger.debug("onDialDown:refreshingAllData", { context: state.id });
+        await Promise.all([
+          this.fetchAndUpdate(state, true), // Refresh habit data
+          refreshNotionData(true) // Refresh global plugin data including tasks
+        ]);
         
         // Clear the timeout reference
         state.longPressTimeout = undefined;
