@@ -33,6 +33,7 @@ interface ContextState {
   isInDetailMode: boolean;
   dialPressStartTime?: number;
   longPressTimeout?: NodeJS.Timeout;
+  currentTaskStatusOverride?: string; // Store temporary status override for immediate feedback
 }
 
 const logger = streamDeck.logger.createScope("CompleteTasksDialAction");
@@ -124,6 +125,7 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
       // Currently in summary mode, enter detail mode
       state.isInDetailMode = true;
       state.currentTaskIndex = direction === "next" ? 0 : totalTasks - 1;
+      state.currentTaskStatusOverride = undefined; // Clear any status override when entering detail mode
       // Switch to detail layout
       await this.switchToLayout(state, DETAIL_LAYOUT_PATH);
     } else {
@@ -134,6 +136,7 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
           // Past the last task, return to summary mode
           state.isInDetailMode = false;
           state.currentTaskIndex = 0;
+          state.currentTaskStatusOverride = undefined; // Clear status override when returning to summary
           logger.debug("onDialRotate:returnToSummary", { 
             context: state.id, 
             direction,
@@ -150,6 +153,7 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
           // Before the first task, return to summary mode
           state.isInDetailMode = false;
           state.currentTaskIndex = 0;
+          state.currentTaskStatusOverride = undefined; // Clear status override when returning to summary
           logger.debug("onDialRotate:returnToSummary", { 
             context: state.id, 
             direction,
@@ -161,6 +165,8 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
           return;
         }
       }
+      // Clear status override when navigating to a different task
+      state.currentTaskStatusOverride = undefined;
     }
 
     logger.debug("onDialRotate", { 
@@ -228,23 +234,17 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
 
       await this.updateTaskStatus(currentTask.id, settings, targetStatus);
       
-      // Stay in detail view and refresh the current task display
-      // Don't return to summary mode - similar to habit behavior
+      // Stay in detail view and immediately update the display
+      // Store the new status in the state for immediate feedback
+      state.currentTaskStatusOverride = targetStatus;
       
-      // Wait a moment for the backend to update, then refresh
-      setTimeout(async () => {
-        const updatedSummary = getNotionTodaySummary();
-        if (updatedSummary && this.contexts.has(state.id)) {
-          const currentState = this.contexts.get(state.id);
-          if (currentState && currentState.isInDetailMode) {
-            await this.updateFeedbackWithCurrentTask(currentState, updatedSummary);
-          }
-        }
-      }, 500); // Small delay to allow backend to update
+      // Immediately refresh the display with the updated status
+      await this.updateFeedbackWithCurrentTask(state, summary);
 
       logger.debug(`onTouchTap:task${action.charAt(0).toUpperCase() + action.slice(1)}d`, { 
         context: state.id, 
-        taskId: currentTask.id 
+        taskId: currentTask.id,
+        newStatus: targetStatus
       });
     } catch (error) {
       logger.error("onTouchTap:error", { 
@@ -282,6 +282,7 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
         
         state.isInDetailMode = false;
         state.currentTaskIndex = 0;
+        state.currentTaskStatusOverride = undefined; // Clear status override when returning to summary
         await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
         
         const summary = getNotionTodaySummary();
@@ -496,7 +497,9 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
     }
 
     const settings = await state.action.getSettings();
-    const isCompleted = this.isTaskCompleted(currentTask, settings.doneValue || "");
+    // Use status override if available, otherwise use actual task status
+    const effectiveStatus = state.currentTaskStatusOverride || currentTask.status;
+    const isCompleted = this.isTaskCompleted({ ...currentTask, status: effectiveStatus }, settings.doneValue || "");
     const taskPosition = `${state.currentTaskIndex + 1}/${allTasks.length}`;
     const taskNameParts = this.formatTaskNameTwoLines(currentTask.title);
     const statusIndicator = isCompleted ? "✓" : "○";
@@ -506,9 +509,13 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
       context: state.id,
       taskIndex: state.currentTaskIndex,
       taskTitle: currentTask.title,
+      originalStatus: currentTask.status,
+      effectiveStatus: effectiveStatus,
       taskPosition,
       taskNameParts,
       isCompleted,
+      statusIndicator,
+      actionHint,
     });
 
     await state.action.setFeedback({
