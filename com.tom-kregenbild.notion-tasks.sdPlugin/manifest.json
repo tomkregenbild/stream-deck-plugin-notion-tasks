@@ -22,10 +22,10 @@
 			]
 		},
 		{
-			"Name": "Notion Complete Tasks",
+			"Name": "Notion Task Manager",
 			"UUID": "com.tom-kregenbild.notion-tasks.complete.dial",
 			"Icon": "imgs/actionIcon",
-			"Tooltip": "Shows complete vs total Notion tasks",
+			"Tooltip": "Browse and toggle Notion task status",
 			"PropertyInspectorPath": "ui/dial-inspector.html",
 			"Controllers": [
 				"Encoder"
@@ -34,8 +34,8 @@
 				"layout": "layouts/complete-summary.touch-layout.json",
 				"background": "touchscreen-background",
 				"TriggerDescription": {
-					"Rotate": "Navigate completed tasks",
-					"Push": "Mark active",
+					"Rotate": "Navigate all tasks",
+					"Push": "Toggle task status",
 					"LongTouch": "Return to summary"
 				}
 			},

@@ -30,6 +30,13 @@
         <sdpi-item-description>Select which status value represents a completed task.</sdpi-item-description>
     </sdpi-item>
 
+    <sdpi-item label="Active Status Value">
+        <sdpi-select setting="activeValue" disabled>
+            <option value="">Loading values...</option>
+        </sdpi-select>
+        <sdpi-item-description>Select which status value represents an active/in-progress task.</sdpi-item-description>
+    </sdpi-item>
+
     <sdpi-item label="Due Date Property">
         <sdpi-select setting="dateProp" disabled>
             <option value="">Loading properties...</option>
@@ -63,15 +70,18 @@
                 // Show error state
                 const statusSelect = document.querySelector('sdpi-select[setting="statusProp"]');
                 const doneSelect = document.querySelector('sdpi-select[setting="doneValue"]');
+                const activeSelect = document.querySelector('sdpi-select[setting="activeValue"]');
                 const dateSelect = document.querySelector('sdpi-select[setting="dateProp"]');
 
                 statusSelect.innerHTML = `<option value="">Error: ${actualSettings._dbPropertiesError}</option>`;
                 dateSelect.innerHTML = `<option value="">Error: ${actualSettings._dbPropertiesError}</option>`;
                 doneSelect.innerHTML = `<option value="">Error loading values</option>`;
+                activeSelect.innerHTML = `<option value="">Error loading values</option>`;
 
                 statusSelect.disabled = true;
                 dateSelect.disabled = true;
                 doneSelect.disabled = true;
+                activeSelect.disabled = true;
                 return;
             }
 
@@ -81,15 +91,18 @@
                 // Set loading state
                 const statusSelect = document.querySelector('sdpi-select[setting="statusProp"]');
                 const doneSelect = document.querySelector('sdpi-select[setting="doneValue"]');
+                const activeSelect = document.querySelector('sdpi-select[setting="activeValue"]');
                 const dateSelect = document.querySelector('sdpi-select[setting="dateProp"]');
 
                 statusSelect.innerHTML = '<option value="">Loading Properties...</option>';
                 dateSelect.innerHTML = '<option value="">Loading Properties...</option>';
                 doneSelect.innerHTML = '<option value="">Select a Status Property first</option>';
+                activeSelect.innerHTML = '<option value="">Select a Status Property first</option>';
 
                 statusSelect.disabled = true;
                 dateSelect.disabled = true;
                 doneSelect.disabled = true;
+                activeSelect.disabled = true;
 
                 // Trigger fetching properties if we don't have them
                 console.log('PI: Available streamDeckClient methods:', Object.getOwnPropertyNames(streamDeckClient));
@@ -114,17 +127,20 @@
             // Get the select elements
             const statusSelect = document.querySelector('sdpi-select[setting="statusProp"]');
             const doneSelect = document.querySelector('sdpi-select[setting="doneValue"]');
+            const activeSelect = document.querySelector('sdpi-select[setting="activeValue"]');
             const dateSelect = document.querySelector('sdpi-select[setting="dateProp"]');
 
             // Clear loading state
             statusSelect.innerHTML = '';
             dateSelect.innerHTML = '';
             doneSelect.innerHTML = '';
+            activeSelect.innerHTML = '';
 
             // Add default options
             statusSelect.appendChild(new Option('Select a status property...', ''));
             dateSelect.appendChild(new Option('Select a date property...', ''));
             doneSelect.appendChild(new Option('Select a done value...', ''));
+            activeSelect.appendChild(new Option('Select an active value...', ''));
 
             // Populate properties
             for (const [name, prop] of Object.entries(properties)) {
@@ -134,6 +150,7 @@
                     if (name === actualSettings.statusProp && prop.status?.options) {
                         prop.status.options.forEach(option => {
                             doneSelect.appendChild(new Option(option.name, option.name));
+                            activeSelect.appendChild(new Option(option.name, option.name));
                         });
                     }
                 }
@@ -146,19 +163,23 @@
             statusSelect.disabled = false;
             dateSelect.disabled = false;
             doneSelect.disabled = false;
+            activeSelect.disabled = false;
 
             // Set current values if they exist
             if (actualSettings.statusProp) statusSelect.value = actualSettings.statusProp;
             if (actualSettings.dateProp) dateSelect.value = actualSettings.dateProp;
             if (actualSettings.doneValue) doneSelect.value = actualSettings.doneValue;
+            if (actualSettings.activeValue) activeSelect.value = actualSettings.activeValue;
 
             // Add event listener for status property changes
             statusSelect.addEventListener('change', (event) => {
                 const selectedProp = properties[event.target.value];
                 doneSelect.innerHTML = '<option value="">Select a done value...</option>';
+                activeSelect.innerHTML = '<option value="">Select an active value...</option>';
                 if (selectedProp?.status?.options) {
                     selectedProp.status.options.forEach(option => {
                         doneSelect.appendChild(new Option(option.name, option.name));
+                        activeSelect.appendChild(new Option(option.name, option.name));
                     });
                 }
             });
