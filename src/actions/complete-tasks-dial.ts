@@ -21,8 +21,8 @@ import {
   type NotionSettings,
 } from "./notion-today";
 
-const SUMMARY_LAYOUT_PATH = "layouts/active-summary.touch-layout.json";
-const DETAIL_LAYOUT_PATH = "layouts/active-detail.touch-layout.json";
+const SUMMARY_LAYOUT_PATH = "layouts/complete-summary.touch-layout.json";
+const DETAIL_LAYOUT_PATH = "layouts/complete-detail.touch-layout.json";
 
 interface ContextState {
   id: string;
@@ -35,16 +35,16 @@ interface ContextState {
   longPressTimeout?: NodeJS.Timeout;
 }
 
-const logger = streamDeck.logger.createScope("ActiveTasksDialAction");
+const logger = streamDeck.logger.createScope("CompleteTasksDialAction");
 
 const INITIAL_FEEDBACK = {
-  heading: { value: "Active Tasks" },
+  heading: { value: "Complete Tasks" },
   value: { value: "Loading..." },
   progress: 0,
 } as const;
 
-@action({ UUID: "com.tom-kregenbild.notion-tasks.active.dial" })
-export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
+@action({ UUID: "com.tom-kregenbild.notion-tasks.complete.dial" })
+export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
   private readonly contexts = new Map<string, ContextState>();
 
   override async onWillAppear(ev: WillAppearEvent<NotionSettings>): Promise<void> {
@@ -61,7 +61,7 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     logger.debug("onWillAppear", { context: state.id });
 
     await this.ensureLayout(state);
-    await action.setTitle("Active Tasks");
+    await action.setTitle("Complete Tasks");
     await action.setFeedback({ ...INITIAL_FEEDBACK });
 
     // Reset to summary mode on appear
@@ -80,7 +80,7 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
       if (!currentState) return;
       
       if (currentState.isInDetailMode) {
-        // In detail mode, update with current task
+        // In detail mode, update with current task (show completed tasks)
         void this.updateFeedbackWithCurrentTask(currentState, latest);
       } else {
         // In summary mode, update with summary
@@ -109,14 +109,14 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     }
 
     const summary = getNotionTodaySummary();
-    if (!summary || !summary.activeTasks || summary.activeTasks.length === 0) {
-      logger.debug("onDialRotate:noTasks", { context: state.id });
+    if (!summary || !summary.completedTasks || summary.completedTasks.length === 0) {
+      logger.debug("onDialRotate:noCompletedTasks", { context: state.id });
       return;
     }
 
     const direction = ev.payload.ticks > 0 ? "next" : "previous";
     const oldIndex = state.currentTaskIndex;
-    const totalTasks = summary.activeTasks.length;
+    const totalTasks = summary.completedTasks.length;
 
     if (!state.isInDetailMode) {
       // Currently in summary mode, enter detail mode
@@ -180,44 +180,44 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
       return;
     }
 
-    // Only allow completing tasks when in detail mode
+    // Only allow uncompleting tasks when in detail mode
     if (!state.isInDetailMode) {
       logger.debug("onTouchTap:notInDetailMode", { context: state.id });
       return;
     }
 
     const summary = getNotionTodaySummary();
-    if (!summary || !summary.activeTasks || summary.activeTasks.length === 0) {
-      logger.debug("onTouchTap:noTasks", { context: state.id });
+    if (!summary || !summary.completedTasks || summary.completedTasks.length === 0) {
+      logger.debug("onTouchTap:noCompletedTasks", { context: state.id });
       return;
     }
 
-    const currentTask = summary.activeTasks[state.currentTaskIndex];
+    const currentTask = summary.completedTasks[state.currentTaskIndex];
     if (!currentTask) {
       logger.debug("onTouchTap:noCurrentTask", { context: state.id, index: state.currentTaskIndex });
       return;
     }
 
     const settings = ev.payload.settings ?? {};
-    if (!settings.statusProp || !settings.doneValue) {
+    if (!settings.statusProp || !settings.activeValue) {
       logger.debug("onTouchTap:missingSettings", { 
         context: state.id, 
         hasStatusProp: !!settings.statusProp,
-        hasDoneValue: !!settings.doneValue
+        hasActiveValue: !!settings.activeValue
       });
       return;
     }
 
     try {
-      logger.debug("onTouchTap:markingTaskDone", { 
+      logger.debug("onTouchTap:markingTaskActive", { 
         context: state.id, 
         taskId: currentTask.id, 
         taskTitle: currentTask.title 
       });
 
-      await this.markTaskDone(currentTask.id, settings);
+      await this.markTaskActive(currentTask.id, settings);
       
-      // After marking done, return to summary mode
+      // After marking active, return to summary mode
       state.isInDetailMode = false;
       state.currentTaskIndex = 0;
       await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
@@ -228,7 +228,7 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
         await this.updateFeedback(state, updatedSummary);
       }
 
-      logger.debug("onTouchTap:taskMarkedDone", { 
+      logger.debug("onTouchTap:taskMarkedActive", { 
         context: state.id, 
         taskId: currentTask.id 
       });
@@ -327,9 +327,9 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     }
   }
 
-  private async markTaskDone(taskId: string, settings: NotionSettings): Promise<void> {
-    if (!settings.statusProp || !settings.doneValue || !settings.token) {
-      throw new Error("Status property, done value, and token must be configured");
+  private async markTaskActive(taskId: string, settings: NotionSettings): Promise<void> {
+    if (!settings.statusProp || !settings.activeValue || !settings.token) {
+      throw new Error("Status property, active value, and token must be configured");
     }
 
     const headers = {
@@ -344,7 +344,7 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
       body: JSON.stringify({
         properties: {
           [settings.statusProp]: {
-            status: { name: settings.doneValue },
+            status: { name: settings.activeValue },
           },
         },
       }),
@@ -353,7 +353,7 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     if (res.status === 429) {
       const retryAfter = Number(res.headers.get("Retry-After")) || 1;
       await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-      return this.markTaskDone(taskId, settings);
+      return this.markTaskActive(taskId, settings);
     }
     
     if (!res.ok) {
@@ -441,7 +441,7 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     const completedRaw = summary.completed ?? Math.max(total - active, 0);
     const completed = Math.min(Math.max(completedRaw, 0), total);
     const ratio = total > 0 ? clampRatio(completed / total) : 0;
-    const title = total > 0 ? `${active} active of ${total}` : `${active} active`;
+    const title = total > 0 ? `${completed} complete of ${total}` : `${completed} complete`;
 
     logger.trace("feedback:update", {
       context: state.id,
@@ -452,26 +452,26 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     });
 
     await state.action.setFeedback({
-      heading: { value: "Active Tasks" },
-      value: { value: `${active} / ${total}` },
+      heading: { value: "Complete Tasks" },
+      value: { value: `${completed} / ${total}` },
       progress: ratio,
     });
     await state.action.setTitle(title);
   }
 
   private async updateFeedbackWithCurrentTask(state: ContextState, summary: TaskSummary): Promise<void> {
-    if (!summary.activeTasks || summary.activeTasks.length === 0) {
+    if (!summary.completedTasks || summary.completedTasks.length === 0) {
       await this.updateFeedback(state, summary);
       return;
     }
 
-    const currentTask = summary.activeTasks[state.currentTaskIndex];
+    const currentTask = summary.completedTasks[state.currentTaskIndex];
     if (!currentTask) {
       await this.updateFeedback(state, summary);
       return;
     }
 
-    const taskPosition = `${state.currentTaskIndex + 1}/${summary.activeTasks.length}`;
+    const taskPosition = `${state.currentTaskIndex + 1}/${summary.completedTasks.length}`;
     const taskNameParts = this.formatTaskNameTwoLines(currentTask.title);
     
     logger.trace("feedback:updateWithTask", {
@@ -483,12 +483,12 @@ export class ActiveTasksDialAction extends SingletonAction<NotionSettings> {
     });
 
     await state.action.setFeedback({
-      heading: { value: `Task ${taskPosition}` },
+      heading: { value: `Complete ${taskPosition}` },
       value: { value: taskNameParts.line1 },
       value2: { value: taskNameParts.line2 },
       time: { value: currentTask.priority || "" },
     });
-    await state.action.setTitle(`Task: ${taskNameParts.line1}`);
+    await state.action.setTitle(`Complete: ${taskNameParts.line1}`);
   }
 
   private formatTaskNameTwoLines(name: string): { line1: string; line2: string } {

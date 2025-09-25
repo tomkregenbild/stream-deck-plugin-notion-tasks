@@ -35,6 +35,7 @@ export type NotionSettings = {
   db?: string;
   statusProp?: string;
   doneValue?: string;
+  activeValue?: string;
   dateProp?: string;
   priorityProp?: string;
   pillarProp?: string;
@@ -56,6 +57,7 @@ interface NormalizedSettings {
   db?: string;
   statusProp?: string;
   doneValue?: string;
+  activeValue?: string;
   dateProp?: string;
   priorityProp?: string;
   pillarProp?: string;

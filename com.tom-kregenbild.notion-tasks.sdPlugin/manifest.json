@@ -22,20 +22,20 @@
 			]
 		},
 		{
-			"Name": "Notion Active Tasks",
-			"UUID": "com.tom-kregenbild.notion-tasks.active.dial",
+			"Name": "Notion Complete Tasks",
+			"UUID": "com.tom-kregenbild.notion-tasks.complete.dial",
 			"Icon": "imgs/actionIcon",
-			"Tooltip": "Shows active vs total Notion tasks",
+			"Tooltip": "Shows complete vs total Notion tasks",
 			"PropertyInspectorPath": "ui/dial-inspector.html",
 			"Controllers": [
 				"Encoder"
 			],
 			"Encoder": {
-				"layout": "layouts/active-summary.touch-layout.json",
+				"layout": "layouts/complete-summary.touch-layout.json",
 				"background": "touchscreen-background",
 				"TriggerDescription": {
-					"Rotate": "Navigate tasks",
-					"Push": "Mark done",
+					"Rotate": "Navigate completed tasks",
+					"Push": "Mark active",
 					"LongTouch": "Return to summary"
 				}
 			},

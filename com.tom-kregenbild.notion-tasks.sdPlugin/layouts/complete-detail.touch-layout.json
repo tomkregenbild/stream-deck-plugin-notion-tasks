@@ -1,0 +1,70 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+  "id": "notion-complete-detail",
+  "items": [
+    {
+      "key": "heading",
+      "type": "text",
+      "rect": [
+        4,
+        6,
+        136,
+        16
+      ],
+      "font": {
+        "size": 13,
+        "weight": 300
+      },
+      "alignment": "center",
+      "color": "#fbb6ce"
+    },
+    {
+      "key": "value",
+      "type": "text",
+      "rect": [
+        4,
+        24,
+        136,
+        18
+      ],
+      "font": {
+        "size": 12,
+        "weight": 600
+      },
+      "alignment": "center",
+      "color": "#ffffff"
+    },
+    {
+      "key": "value2",
+      "type": "text",
+      "rect": [
+        4,
+        42,
+        136,
+        18
+      ],
+      "font": {
+        "size": 12,
+        "weight": 600
+      },
+      "alignment": "center",
+      "color": "#ffffff"
+    },
+    {
+      "key": "time",
+      "type": "text",
+      "rect": [
+        4,
+        60,
+        136,
+        16
+      ],
+      "font": {
+        "size": 10,
+        "weight": 400
+      },
+      "alignment": "center",
+      "color": "#9ca3af"
+    }
+  ]
+}

@@ -27,6 +27,7 @@ export interface TaskSummary {
   completed: number;
   active: number;
   activeTasks: NotionTask[];
+  completedTasks: NotionTask[];
   byPillar: Record<string, number>;
   byProject: Record<string, number>;
   nextMeeting?: NotionTask;
@@ -195,6 +196,7 @@ export function buildTaskSummary(
   metricsOrder: MetricKey[],
 ): TaskSummary {
   const activeTasks: NotionTask[] = [];
+  const completedTasks: NotionTask[] = [];
   const byPillar: Record<string, number> = {};
   const byProject: Record<string, number> = {};
   let completed = 0;
@@ -211,6 +213,7 @@ export function buildTaskSummary(
     const completedTask = isTaskCompleted(task, doneValue);
     if (completedTask) {
       completed += 1;
+      completedTasks.push(task);
       continue;
     }
 
@@ -244,6 +247,7 @@ export function buildTaskSummary(
     completed,
     active: activeTasks.length,
     activeTasks: sortTasks(activeTasks),
+    completedTasks: sortTasks(completedTasks),
     byPillar,
     byProject,
     nextMeeting,
