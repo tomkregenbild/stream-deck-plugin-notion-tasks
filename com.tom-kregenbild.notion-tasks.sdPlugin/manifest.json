@@ -10,7 +10,7 @@
 			"Tooltip": "Shows a Notion task scheduled for today",
 			"States": [
 				{
-					"Image": "imgs/key",
+					"Image": "imgs/actionIcon",
 					"TitleAlignment": "middle",
 					"FontSize": 12
 				}
@@ -41,7 +41,7 @@
 			},
 			"States": [
 				{
-					"Image": "imgs/key",
+					"Image": "imgs/actionIcon",
 					"Title": "",
 					"TitleAlignment": "middle",
 					"FontSize": 12
@@ -66,7 +66,7 @@
 			},
 			"States": [
 				{
-					"Image": "imgs/key",
+					"Image": "imgs/actionIcon",
 					"Title": "",
 					"TitleAlignment": "middle",
 					"FontSize": 12
@@ -93,7 +93,7 @@
 			},
 			"States": [
 				{
-					"Image": "imgs/key",
+					"Image": "imgs/actionIcon",
 					"Title": "",
 					"TitleAlignment": "middle",
 					"FontSize": 12
@@ -107,7 +107,7 @@
 			"Tooltip": "Track daily habits from your Notion database",
 			"States": [
 				{
-					"Image": "imgs/key",
+					"Image": "imgs/actionIcon",
 					"TitleAlignment": "middle",
 					"FontSize": 12
 				}
