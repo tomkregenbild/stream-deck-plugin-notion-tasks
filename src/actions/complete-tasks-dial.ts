@@ -38,7 +38,7 @@ interface ContextState {
 const logger = streamDeck.logger.createScope("CompleteTasksDialAction");
 
 const INITIAL_FEEDBACK = {
-  heading: { value: "Task Manager" },
+  heading: { value: "Completed Tasks" },
   value: { value: "Loading..." },
   progress: 0,
 } as const;
@@ -61,7 +61,7 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
     logger.debug("onWillAppear", { context: state.id });
 
     await this.ensureLayout(state);
-    await action.setTitle("Task Manager");
+    await action.setTitle("Completed Tasks");
     await action.setFeedback({ ...INITIAL_FEEDBACK });
 
     // Reset to summary mode on appear
@@ -228,16 +228,19 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
 
       await this.updateTaskStatus(currentTask.id, settings, targetStatus);
       
-      // After toggling, return to summary mode
-      state.isInDetailMode = false;
-      state.currentTaskIndex = 0;
-      await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
+      // Stay in detail view and refresh the current task display
+      // Don't return to summary mode - similar to habit behavior
       
-      // Refresh the summary display
-      const updatedSummary = getNotionTodaySummary();
-      if (updatedSummary) {
-        await this.updateFeedback(state, updatedSummary);
-      }
+      // Wait a moment for the backend to update, then refresh
+      setTimeout(async () => {
+        const updatedSummary = getNotionTodaySummary();
+        if (updatedSummary && this.contexts.has(state.id)) {
+          const currentState = this.contexts.get(state.id);
+          if (currentState && currentState.isInDetailMode) {
+            await this.updateFeedbackWithCurrentTask(currentState, updatedSummary);
+          }
+        }
+      }, 500); // Small delay to allow backend to update
 
       logger.debug(`onTouchTap:task${action.charAt(0).toUpperCase() + action.slice(1)}d`, { 
         context: state.id, 
@@ -472,7 +475,7 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
     });
 
     await state.action.setFeedback({
-      heading: { value: "Task Manager" },
+      heading: { value: "Completed Tasks" },
       value: { value: `${completed} / ${total}` },
       progress: ratio,
     });
