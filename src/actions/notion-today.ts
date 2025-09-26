@@ -15,13 +15,18 @@ import {
   PRIORITY_ALIASES,
   DEFAULT_MEETING_PRIORITY,
   DEFAULT_METRICS_ORDER,
+  DEFAULT_PRIORITY_VALUES,
+  DEFAULT_PRIORITY_ALIASES,
   buildTaskSummary,
+  buildTaskSummaryWithSorter,
   extractDateValue,
   extractDateRange,
   extractPropertyText,
   normalizePriorityKey,
   sanitizeMetricsOrder,
   sortTasks,
+  createPrioritySortIndex,
+  createTaskSorter,
   type NotionTask,
   type TaskSummary,
   type MetricKey,
@@ -44,6 +49,11 @@ export type NotionSettings = {
   metricsOrder?: string | string[];
   position?: number | string;
   dateFilter?: "today" | "tomorrow" | "weekly";
+  
+  // NEW: Priority system configuration
+  priorityValues?: string[]; // User-defined priority values in sort order (highest to lowest)
+  priorityAliases?: Record<string, string>; // Optional aliases for priority values
+  
   _dbProperties?: Record<string, { 
     type: string; 
     status?: { options: Array<{ name: string }> };
@@ -67,6 +77,11 @@ interface NormalizedSettings {
   metricsOrder: MetricKey[];
   position?: number;
   dateFilter?: "today" | "tomorrow" | "weekly";
+  
+  // NEW: Priority system configuration
+  priorityValues: string[];
+  priorityAliases: Record<string, string>;
+  
   _dbProperties?: Record<string, { 
     type: string; 
     status?: { options: Array<{ name: string }> };
@@ -393,11 +408,14 @@ class TaskCoordinator {
           logger.debug("Building task summary", { taskCount: tasks.length });
         }
 
-        const summary = buildTaskSummary(
+        const summary = buildTaskSummaryWithSorter(
           tasks,
           settings.doneValue ?? "Done", // Fallback to "Done" if doneValue is not set
           settings.meetingPriority,
           settings.metricsOrder,
+          createTaskSorter(
+            createPrioritySortIndex(settings.priorityValues, settings.priorityAliases)
+          ),
         );
         this.tasks = summary.activeTasks;
         this.summary = summary;
@@ -745,7 +763,9 @@ class NotionClient {
         const tasks = (data.results ?? [])
           .map(page => extractTask(page, settings))
           .filter((task): task is NotionTask => Boolean(task));
-        return { tasks: sortTasks(tasks) };
+        return { tasks: createTaskSorter(
+          createPrioritySortIndex(settings.priorityValues, settings.priorityAliases)
+        )(tasks) };
       } else {
         // Default to today
         dateFilterQuery = { equals: today };
@@ -782,7 +802,9 @@ class NotionClient {
       const tasks = (data.results ?? [])
         .map(page => extractTask(page, settings))
         .filter((task): task is NotionTask => Boolean(task));
-      return { tasks: sortTasks(tasks) };
+      return { tasks: createTaskSorter(
+        createPrioritySortIndex(settings.priorityValues, settings.priorityAliases)
+      )(tasks) };
     } catch (error) {
       return { tasks: [], error: error instanceof Error ? error.message : String(error) };
     }
@@ -837,6 +859,7 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
     db: trim(settings.db),
     statusProp: trim(settings.statusProp),
     doneValue: trim(settings.doneValue),
+    activeValue: trim(settings.activeValue),
     dateProp: trim(settings.dateProp),
     priorityProp: trim(settings.priorityProp),
     pillarProp: trim(settings.pillarProp),
@@ -845,6 +868,13 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
     metricsOrder: sanitizeMetricsOrder(settings.metricsOrder ?? DEFAULT_METRICS_ORDER),
     position: parsePosition(settings.position),
     dateFilter: settings.dateFilter || "today",
+    
+    // NEW: Priority system configuration with backwards-compatible defaults
+    priorityValues: settings.priorityValues && settings.priorityValues.length > 0 
+      ? settings.priorityValues 
+      : DEFAULT_PRIORITY_VALUES,
+    priorityAliases: settings.priorityAliases ?? DEFAULT_PRIORITY_ALIASES,
+    
     _dbProperties: settings._dbProperties,
   };
 }

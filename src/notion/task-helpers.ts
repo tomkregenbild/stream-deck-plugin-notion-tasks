@@ -38,7 +38,8 @@ export interface TaskSummary {
 
 export const DEFAULT_MEETING_PRIORITY = "Meetings";
 
-export const PRIORITY_SEQUENCE = [
+// Default priority values for backwards compatibility
+export const DEFAULT_PRIORITY_VALUES = [
   "remember",
   "quick-task",
   "1st-priority",
@@ -48,9 +49,10 @@ export const PRIORITY_SEQUENCE = [
   "5th-priority",
   "errand",
   "meetings",
-] as const;
+];
 
-export const PRIORITY_ALIASES: Record<string, string> = {
+// Default priority aliases for backwards compatibility
+export const DEFAULT_PRIORITY_ALIASES: Record<string, string> = {
   "first-priority": "1st-priority",
   "second-priority": "2nd-priority",
   "third-priority": "3rd-priority",
@@ -58,7 +60,10 @@ export const PRIORITY_ALIASES: Record<string, string> = {
   "fifth-priority": "5th-priority",
 };
 
-export const PRIORITY_ORDER = PRIORITY_SEQUENCE.reduce<Record<string, number>>((acc, key, index) => {
+// Legacy constants for backwards compatibility (deprecated)
+export const PRIORITY_SEQUENCE = DEFAULT_PRIORITY_VALUES as readonly string[];
+export const PRIORITY_ALIASES = DEFAULT_PRIORITY_ALIASES;
+export const PRIORITY_ORDER = DEFAULT_PRIORITY_VALUES.reduce<Record<string, number>>((acc, key, index) => {
   acc[key] = index;
   return acc;
 }, {});
@@ -71,6 +76,33 @@ export function normalizePriorityKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+// Create a priority sort index function based on configurable priority values
+export function createPrioritySortIndex(
+  priorityValues: string[],
+  aliases: Record<string, string> = {}
+): (priority?: string) => number {
+  const priorityOrder = priorityValues.reduce<Record<string, number>>(
+    (acc, value, index) => {
+      acc[normalizePriorityKey(value)] = index;
+      return acc;
+    },
+    {}
+  );
+
+  return (priority?: string): number => {
+    if (!priority) return priorityValues.length + 1;
+
+    const normalizedKey = normalizePriorityKey(priority);
+    if (!normalizedKey) return priorityValues.length + 1;
+    
+    const mappedKey = aliases[normalizedKey] ?? normalizedKey;
+    const index = priorityOrder[mappedKey];
+
+    return index !== undefined ? index : priorityValues.length + 1;
+  };
+}
+
+// Legacy function for backwards compatibility - uses hardcoded values
 export function prioritySortIndex(priority?: string): number {
   if (!priority) {
     return PRIORITY_SEQUENCE.length + 1;
@@ -94,6 +126,28 @@ export function compareDateStrings(a?: string, b?: string): number {
   return a.localeCompare(b);
 }
 
+// Create a configurable sorting function
+export function createTaskSorter(
+  prioritySortFunc: (priority?: string) => number
+): (tasks: NotionTask[]) => NotionTask[] {
+  return (tasks: NotionTask[]) => {
+    return tasks.slice().sort((a, b) => {
+      const dueCompare = compareDateStrings(a.due, b.due);
+      if (dueCompare !== 0) {
+        return dueCompare;
+      }
+
+      const priorityCompare = prioritySortFunc(a.priority) - prioritySortFunc(b.priority);
+      if (priorityCompare !== 0) {
+        return priorityCompare;
+      }
+
+      return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+    });
+  };
+}
+
+// Legacy function for backwards compatibility - uses hardcoded priority system
 export function sortTasks(tasks: NotionTask[]): NotionTask[] {
   return tasks.slice().sort((a, b) => {
     const dueCompare = compareDateStrings(a.due, b.due);
@@ -195,6 +249,22 @@ export function buildTaskSummary(
   meetingPriority: string,
   metricsOrder: MetricKey[],
 ): TaskSummary {
+  return buildTaskSummaryWithSorter(
+    tasks,
+    doneValue,
+    meetingPriority,
+    metricsOrder,
+    sortTasks // Use legacy sorting for backwards compatibility
+  );
+}
+
+export function buildTaskSummaryWithSorter(
+  tasks: NotionTask[],
+  doneValue: string,
+  meetingPriority: string,
+  metricsOrder: MetricKey[],
+  taskSorter: (tasks: NotionTask[]) => NotionTask[],
+): TaskSummary {
   const activeTasks: NotionTask[] = [];
   const completedTasks: NotionTask[] = [];
   const byPillar: Record<string, number> = {};
@@ -238,7 +308,7 @@ export function buildTaskSummary(
   }
 
   if (!nextMeeting && activeTasks.length > 0) {
-    const sortedActive = sortTasks(activeTasks);
+    const sortedActive = taskSorter(activeTasks);
     nextMeeting = sortedActive[0];
   }
 
@@ -246,8 +316,8 @@ export function buildTaskSummary(
     total: tasks.length,
     completed,
     active: activeTasks.length,
-    activeTasks: sortTasks(activeTasks),
-    completedTasks: sortTasks(completedTasks),
+    activeTasks: taskSorter(activeTasks),
+    completedTasks: taskSorter(completedTasks),
     byPillar,
     byProject,
     nextMeeting,
