@@ -205,7 +205,7 @@ export class NotionTodayAction extends SingletonAction<NotionSettings> {
         }
 
         try {
-          logger.debug("Fetching properties", { context: action.id, db: settings.db });
+          logger.debug("Fetching properties", { context: action.id, hasDb: !!settings.db });
           const client = new NotionClient();
           const dbProperties = await client.fetchDatabaseProperties(settings.db, settings.token);
           
@@ -366,7 +366,7 @@ class TaskCoordinator {
 
     logger.debug("Using settings", { 
       token: settings.token ? "present" : "missing",
-      db: settings.db,
+      db: settings.db ? "present" : "missing",
       dateProp: settings.dateProp,
       statusProp: settings.statusProp,
       force 

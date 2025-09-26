@@ -6,8 +6,9 @@ import { NextMeetingDialAction } from "./actions/next-meeting-dial";
 import { NotionHabitAction } from "./actions/notion-habit";
 import { HabitDialAction } from "./actions/habit-dial";
 
-// We can enable "trace" logging so that all messages between the Stream Deck, and the plugin are recorded. When storing sensitive information
-streamDeck.logger.setLevel(LogLevel.TRACE);
+// Set logging level to DEBUG to show useful debugging info while avoiding TRACE level 
+// that logs sensitive data like tokens and database IDs in settings objects
+streamDeck.logger.setLevel(LogLevel.DEBUG);
 
 // Register the Notion Today action.
 streamDeck.actions.registerAction(new NotionTodayAction());

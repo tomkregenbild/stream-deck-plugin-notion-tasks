@@ -756,7 +756,7 @@ export class NotionHabitAction extends SingletonAction<HabitSettings> {
         }
 
         try {
-          logger.debug("Fetching properties", { context: action.id, db: settings.db });
+          logger.debug("Fetching properties", { context: action.id, hasDb: !!settings.db });
           const client = new NotionClient();
           const dbProperties = await client.fetchDatabaseProperties(settings.db, settings.token);
           

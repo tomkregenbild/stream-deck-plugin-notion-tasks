@@ -32,11 +32,22 @@
         console.log('PI: streamDeckClient available:', !!streamDeckClient);
         
         function updateStatus(settings) {
-            console.log('PI: updateStatus called with settings:', settings);
+            console.log('PI: updateStatus called with sanitized data:', {
+                hasSettings: !!settings,
+                hasToken: !!(settings?.settings?.token || settings?.token),
+                hasDb: !!(settings?.settings?.db || settings?.db)
+            });
             
             // Handle different possible settings structures
             const actualSettings = settings.settings || settings;
-            console.log('PI: Actual settings to use:', actualSettings);
+            console.log('PI: Sanitized settings to use:', {
+                hasToken: !!actualSettings?.token,
+                hasDb: !!actualSettings?.db,
+                columnProp: actualSettings?.columnProp,
+                includeColumns: actualSettings?.includeColumns,
+                excludeColumns: actualSettings?.excludeColumns,
+                hasDbProperties: !!actualSettings?._dbProperties
+            });
             console.log('PI: Token present:', !!actualSettings?.token);
             console.log('PI: DB present:', !!actualSettings?.db);
             

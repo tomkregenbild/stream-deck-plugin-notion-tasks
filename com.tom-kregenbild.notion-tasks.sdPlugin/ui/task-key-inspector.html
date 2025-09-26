@@ -64,11 +64,25 @@
         console.log('PI: streamDeckClient available:', !!streamDeckClient);
         
         function updateDropdowns(settings) {
-            console.log('PI: updateDropdowns called with settings:', settings);
+            console.log('PI: updateDropdowns called with sanitized data:', {
+                hasSettings: !!settings,
+                hasToken: !!(settings?.settings?.token || settings?.token),
+                hasDb: !!(settings?.settings?.db || settings?.db)
+            });
             
             // Handle different possible settings structures
             const actualSettings = settings.settings || settings;
-            console.log('PI: Actual settings to use:', actualSettings);
+            console.log('PI: Sanitized settings to use:', {
+                hasToken: !!actualSettings?.token,
+                hasDb: !!actualSettings?.db,
+                statusProp: actualSettings?.statusProp,
+                doneValue: actualSettings?.doneValue,
+                dateProp: actualSettings?.dateProp,
+                priorityProp: actualSettings?.priorityProp,
+                pillarProp: actualSettings?.pillarProp,
+                projectProp: actualSettings?.projectProp,
+                hasDbProperties: !!actualSettings?._dbProperties
+            });
             console.log('PI: Token present:', !!actualSettings?.token);
             console.log('PI: DB present:', !!actualSettings?.db);
             
@@ -200,7 +214,11 @@
 
         // Listen for settings changes using the SDPI Components pattern
         streamDeckClient.onDidReceiveSettings = (settingsResponse) => {
-            console.log('PI: onDidReceiveSettings called', settingsResponse);
+            console.log('PI: onDidReceiveSettings called with sanitized data:', {
+                hasSettings: !!settingsResponse.payload?.settings,
+                hasToken: !!settingsResponse.payload?.settings?.token,
+                hasDb: !!settingsResponse.payload?.settings?.db
+            });
             const actualSettings = settingsResponse.settings || settingsResponse;
             updateDropdowns(settingsResponse);
             
@@ -219,7 +237,11 @@
         document.addEventListener('DOMContentLoaded', () => {
             console.log('PI: DOMContentLoaded event fired!');
             streamDeckClient.getSettings().then(settingsResponse => {
-                console.log('PI: Initial settings received:', settingsResponse);
+                console.log('PI: Initial settings received with sanitized data:', {
+                    hasSettings: !!settingsResponse.payload?.settings,
+                    hasToken: !!settingsResponse.payload?.settings?.token,
+                    hasDb: !!settingsResponse.payload?.settings?.db
+                });
                 const actualSettings = settingsResponse.settings || settingsResponse;
                 updateDropdowns(settingsResponse);
                 
