@@ -44,6 +44,15 @@
         <sdpi-item-description>Select the Due Date property from your Notion database.</sdpi-item-description>
     </sdpi-item>
 
+    <sdpi-item label="Date Filter">
+        <sdpi-select setting="dateFilter" value="today">
+            <option value="today" selected>Today</option>
+            <option value="tomorrow">Tomorrow</option>
+            <option value="weekly">This Week</option>
+        </sdpi-select>
+        <sdpi-item-description>Choose which tasks to show based on their due date.</sdpi-item-description>
+    </sdpi-item>
+
     <script>
         console.log('PI: JavaScript file loaded!');
         

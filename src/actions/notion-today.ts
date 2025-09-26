@@ -43,6 +43,7 @@ export type NotionSettings = {
   meetingPriority?: string;
   metricsOrder?: string | string[];
   position?: number | string;
+  dateFilter?: "today" | "tomorrow" | "weekly";
   _dbProperties?: Record<string, { 
     type: string; 
     status?: { options: Array<{ name: string }> };
@@ -65,6 +66,7 @@ interface NormalizedSettings {
   meetingPriority: string;
   metricsOrder: MetricKey[];
   position?: number;
+  dateFilter?: "today" | "tomorrow" | "weekly";
   _dbProperties?: Record<string, { 
     type: string; 
     status?: { options: Array<{ name: string }> };
@@ -615,6 +617,11 @@ class NotionClient {
     return result;
   }
 
+  // Public method for date-filtered queries (no caching)
+  async fetchTasksWithDateFilter(settings: NormalizedSettings & { cacheKey: string }): Promise<{ tasks: NotionTask[]; error?: string }> {
+    return this.queryNotion(settings);
+  }
+
   async markTaskDone(taskId: string, settings: NormalizedSettings & { cacheKey: string }): Promise<void> {
     if (!settings.statusProp || !settings.doneValue) {
       throw new Error("Status property and done value must be configured");
@@ -676,16 +683,79 @@ class NotionClient {
       }
 
       const today = toIsoDate(new Date());
+      const dateFilter = settings.dateFilter || "today";
+      
       notionLogger.debug("Querying tasks", {
         dateProp: settings.dateProp,
-        date: today
+        date: today,
+        dateFilter
       });
+
+      // Build the date filter based on the dateFilter setting
+      let dateFilterQuery: Record<string, unknown>;
+      
+      if (dateFilter === "tomorrow") {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = toIsoDate(tomorrow);
+        dateFilterQuery = { equals: tomorrowStr };
+      } else if (dateFilter === "weekly") {
+        // Get date range for the next 7 days (including today)
+        const weekEnd = new Date();
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        const weekEndStr = toIsoDate(weekEnd);
+        
+        // For weekly, we need to use a compound filter
+        const body: Record<string, unknown> = {
+          page_size: 100,
+          filter: {
+            and: [
+              {
+                property: settings.dateProp,
+                date: { on_or_after: today }
+              },
+              {
+                property: settings.dateProp,
+                date: { on_or_before: weekEndStr }
+              }
+            ]
+          },
+          sorts: [{ property: settings.dateProp, direction: "ascending" }]
+        };
+        
+        notionLogger.debug("Weekly query body", { body });
+        
+        const res = await fetch(`https://api.notion.com/v1/databases/${settings.db}/query`, {
+          method: "POST",
+          headers: this.buildHeaders(settings.token),
+          body: JSON.stringify(body),
+        });
+
+        if (res.status === 429) {
+          const retryAfter = Number(res.headers.get("Retry-After")) || 1;
+          await delay(retryAfter * 1_000);
+          return this.queryNotion(settings);
+        }
+        if (!res.ok) {
+          const message = await safeReadText(res);
+          return { tasks: [], error: `HTTP ${res.status}: ${message}` };
+        }
+
+        const data = (await res.json()) as NotionQueryResponse;
+        const tasks = (data.results ?? [])
+          .map(page => extractTask(page, settings))
+          .filter((task): task is NotionTask => Boolean(task));
+        return { tasks: sortTasks(tasks) };
+      } else {
+        // Default to today
+        dateFilterQuery = { equals: today };
+      }
 
       const body: Record<string, unknown> = {
         page_size: 100,
         filter: {
           property: settings.dateProp,
-          date: { equals: today },
+          date: dateFilterQuery,
         },
         sorts: [{ property: settings.dateProp, direction: "ascending" }]
       };
@@ -774,12 +844,43 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
     meetingPriority: trim(settings.meetingPriority) ?? DEFAULT_MEETING_PRIORITY,
     metricsOrder: sanitizeMetricsOrder(settings.metricsOrder ?? DEFAULT_METRICS_ORDER),
     position: parsePosition(settings.position),
+    dateFilter: settings.dateFilter || "today",
     _dbProperties: settings._dbProperties,
   };
 }
 
 export function getNotionTodaySummary(): TaskSummary | undefined {
   return getCoordinator().getSummary();
+}
+
+// New function to get tasks with specific date filter
+export async function getNotionTasksWithDateFilter(settings: NotionSettings): Promise<TaskSummary | undefined> {
+  const normalized = normalizeSettings(settings);
+  
+  if (!normalized.token || !normalized.db || !normalized.dateProp || !normalized.statusProp) {
+    return undefined;
+  }
+
+  const notionClient = new NotionClient();
+  const settingsWithCache = { ...normalized, cacheKey: `${normalized.db}-${normalized.dateFilter || 'today'}` };
+  
+  try {
+    const result = await notionClient.fetchTasksWithDateFilter(settingsWithCache);
+    if (result.error) {
+      streamDeck.logger.error("Failed to fetch tasks with date filter", { error: result.error, dateFilter: normalized.dateFilter });
+      return undefined;
+    }
+    
+    return buildTaskSummary(
+      result.tasks,
+      normalized.doneValue ?? "Done",
+      normalized.meetingPriority,
+      normalized.metricsOrder,
+    );
+  } catch (error) {
+    streamDeck.logger.error("Error fetching tasks with date filter", { error: error instanceof Error ? error.message : String(error) });
+    return undefined;
+  }
 }
 
 export function subscribeToNotionSummary(listener: SummaryListener): () => void {

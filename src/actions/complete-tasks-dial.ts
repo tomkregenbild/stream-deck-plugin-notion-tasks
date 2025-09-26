@@ -17,6 +17,7 @@ import { type TaskSummary, type NotionTask } from "../notion/task-helpers";
 import { NotionClient } from "../notion/database-helpers";
 import {
   getNotionTodaySummary,
+  getNotionTasksWithDateFilter,
   subscribeToNotionSummary,
   refreshNotionData,
   type NotionSettings,
@@ -39,8 +40,72 @@ interface ContextState {
 
 const logger = streamDeck.logger.createScope("CompleteTasksDialAction");
 
+// Cache for date-filtered summaries to avoid repeated API calls
+const dateFilterCache = new Map<string, { summary: TaskSummary; timestamp: number }>();
+const CACHE_DURATION = 60 * 1000; // 1 minute cache
+
+// Helper function to get filtered task summary based on date filter setting
+async function getFilteredTaskSummaryAsync(settings: NotionSettings): Promise<TaskSummary | undefined> {
+  const dateFilter = settings.dateFilter || "today";
+  
+  logger.debug("getFilteredTaskSummaryAsync start", {
+    dateFilter
+  });
+  
+  // For "today", use the existing cached summary for better performance
+  if (dateFilter === "today") {
+    return getNotionTodaySummary();
+  }
+  
+  // Check cache for non-today filters
+  const cacheKey = `${settings.db}-${settings.token}-${dateFilter}`;
+  const cached = dateFilterCache.get(cacheKey);
+  const now = Date.now();
+  
+  if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+    logger.debug("getFilteredTaskSummaryAsync cache hit", {
+      dateFilter,
+      cacheAge: now - cached.timestamp
+    });
+    return cached.summary;
+  }
+  
+  // For other filters, fetch fresh data with the specific date filter
+  try {
+    logger.debug("getFilteredTaskSummaryAsync fetching from API", {
+      dateFilter
+    });
+    
+    const summary = await getNotionTasksWithDateFilter(settings);
+    
+    // Cache the result
+    if (summary) {
+      dateFilterCache.set(cacheKey, { summary, timestamp: now });
+      logger.debug("getFilteredTaskSummaryAsync cached result", {
+        dateFilter,
+        active: summary.active,
+        total: summary.total
+      });
+    }
+    
+    return summary;
+  } catch (error) {
+    logger.error("getFilteredTaskSummaryAsync error", {
+      dateFilter,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return undefined;
+  }
+}
+
+// Function to clear cache when data is refreshed
+function clearDateFilterCache(): void {
+  dateFilterCache.clear();
+  logger.debug("Date filter cache cleared");
+}
+
 const INITIAL_FEEDBACK = {
-  heading: { value: "Tasks Today" },
+  heading: { value: "Tasks" },
   value: { value: "Loading..." },
   progress: 0,
 } as const;
@@ -63,16 +128,17 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
     logger.debug("onWillAppear", { context: state.id });
 
     await this.ensureLayout(state);
-    await action.setTitle("Tasks Today");
+    await action.setTitle("Tasks");
     await action.setFeedback({ ...INITIAL_FEEDBACK });
 
     // Reset to summary mode on appear
     state.isInDetailMode = false;
     state.currentTaskIndex = 0;
 
-    const summary = getNotionTodaySummary();
+    const settings = ev.payload.settings ?? {};
+    const summary = await getFilteredTaskSummaryAsync(settings);
     if (summary) {
-      await this.updateFeedback(state, summary);
+      await this.updateFeedback(state, summary, settings);
     }
 
     state.unsubscribe = subscribeToNotionSummary(latest => {
@@ -81,13 +147,22 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
       const currentState = this.contexts.get(state.id);
       if (!currentState) return;
       
-      if (currentState.isInDetailMode) {
-        // In detail mode, update with current task (show completed tasks)
-        void this.updateFeedbackWithCurrentTask(currentState, latest);
-      } else {
-        // In summary mode, update with summary
-        void this.updateFeedback(currentState, latest);
-      }
+      // Clear cache when new data comes in
+      clearDateFilterCache();
+      
+      // Get current settings for filtering
+      currentState.action.getSettings().then(async currentSettings => {
+        const filteredSummary = await getFilteredTaskSummaryAsync(currentSettings);
+        if (!filteredSummary) return;
+        
+        if (currentState.isInDetailMode) {
+          // In detail mode, update with current task (show completed tasks)
+          void this.updateFeedbackWithCurrentTask(currentState, filteredSummary, currentSettings);
+        } else {
+          // In summary mode, update with summary
+          void this.updateFeedback(currentState, filteredSummary, currentSettings);
+        }
+      });
     });
   }
 
@@ -110,7 +185,8 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
       return;
     }
 
-    const summary = getNotionTodaySummary();
+    const settings = ev.payload.settings ?? {};
+    const summary = await getFilteredTaskSummaryAsync(settings);
     // Show all tasks (both active and completed)
     const allTasks = [...(summary?.activeTasks || []), ...(summary?.completedTasks || [])];
     if (!summary || allTasks.length === 0) {
@@ -145,7 +221,7 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
           });
           // Switch back to summary layout
           await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
-          await this.updateFeedback(state, summary);
+          await this.updateFeedback(state, summary, settings);
           return;
         }
       } else {
@@ -162,7 +238,7 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
           });
           // Switch back to summary layout
           await this.switchToLayout(state, SUMMARY_LAYOUT_PATH);
-          await this.updateFeedback(state, summary);
+          await this.updateFeedback(state, summary, settings);
           return;
         }
       }
@@ -179,7 +255,7 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
       isInDetailMode: state.isInDetailMode
     });
 
-    await this.updateFeedbackWithCurrentTask(state, summary);
+    await this.updateFeedbackWithCurrentTask(state, summary, settings);
   }
 
   override async onTouchTap(ev: TouchTapEvent<NotionSettings>): Promise<void> {
@@ -195,7 +271,8 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
       return;
     }
 
-    const summary = getNotionTodaySummary();
+    const settings = ev.payload.settings ?? {};
+    const summary = await getFilteredTaskSummaryAsync(settings);
     const allTasks = [...(summary?.activeTasks || []), ...(summary?.completedTasks || [])];
     if (!summary || allTasks.length === 0) {
       logger.debug("onTouchTap:noTasks", { context: state.id });
@@ -208,7 +285,6 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
       return;
     }
 
-    const settings = ev.payload.settings ?? {};
     if (!settings.statusProp || !settings.activeValue || !settings.doneValue) {
       logger.debug("onTouchTap:missingSettings", { 
         context: state.id, 
@@ -235,12 +311,15 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
 
       await this.updateTaskStatus(currentTask.id, settings, targetStatus);
       
+      // Clear cache since task status changed
+      clearDateFilterCache();
+      
       // Stay in detail view and immediately update the display
       // Store the new status in the state for immediate feedback
       state.currentTaskStatusOverride = targetStatus;
       
       // Immediately refresh the display with the updated status
-      await this.updateFeedbackWithCurrentTask(state, summary);
+      await this.updateFeedbackWithCurrentTask(state, summary, settings);
 
       logger.debug(`onTouchTap:task${action.charAt(0).toUpperCase() + action.slice(1)}d`, { 
         context: state.id, 
@@ -288,11 +367,13 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
         
         // Refresh all plugin data before updating the display
         logger.debug("onDialDown:refreshingData", { context: state.id });
+        clearDateFilterCache(); // Clear cache before refresh
         await refreshNotionData(true);
         
-        const summary = getNotionTodaySummary();
+        const currentSettings = await state.action.getSettings();
+        const summary = await getFilteredTaskSummaryAsync(currentSettings);
         if (summary) {
-          await this.updateFeedback(state, summary);
+          await this.updateFeedback(state, summary, currentSettings);
         }
         
         // Clear the timeout reference
@@ -464,7 +545,7 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
     }
   }
 
-  private async updateFeedback(state: ContextState, summary: TaskSummary): Promise<void> {
+  private async updateFeedback(state: ContextState, summary: TaskSummary, settings?: NotionSettings): Promise<void> {
     const active = summary.active ?? 0;
     const total = summary.total ?? 0;
     const completedRaw = summary.completed ?? Math.max(total - active, 0);
@@ -472,39 +553,56 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
     const ratio = total > 0 ? clampRatio(completed / total) : 0;
     const title = total > 0 ? `${completed} complete of ${total}` : `${completed} complete`;
 
+    // Generate heading based on date filter
+    const dateFilter = settings?.dateFilter || "today";
+    let heading = "Tasks";
+    switch (dateFilter) {
+      case "tomorrow":
+        heading = "Tasks Tomorrow";
+        break;
+      case "weekly":
+        heading = "Tasks This Week";
+        break;
+      default:
+        heading = "Tasks Today";
+        break;
+    }
+
     logger.trace("feedback:update", {
       context: state.id,
       active,
       total,
       completed,
       ratio,
+      dateFilter,
+      heading,
     });
 
     await state.action.setFeedback({
-      heading: { value: "Tasks Today" },
+      heading: { value: heading },
       value: { value: `${completed} / ${total}` },
       progress: ratio,
     });
     await state.action.setTitle(title);
   }
 
-  private async updateFeedbackWithCurrentTask(state: ContextState, summary: TaskSummary): Promise<void> {
+  private async updateFeedbackWithCurrentTask(state: ContextState, summary: TaskSummary, settings?: NotionSettings): Promise<void> {
     const allTasks = [...(summary.activeTasks || []), ...(summary.completedTasks || [])];
     if (allTasks.length === 0) {
-      await this.updateFeedback(state, summary);
+      await this.updateFeedback(state, summary, settings);
       return;
     }
 
     const currentTask = allTasks[state.currentTaskIndex];
     if (!currentTask) {
-      await this.updateFeedback(state, summary);
+      await this.updateFeedback(state, summary, settings);
       return;
     }
 
-    const settings = await state.action.getSettings();
+    const currentSettings = settings || await state.action.getSettings();
     // Use status override if available, otherwise use actual task status
     const effectiveStatus = state.currentTaskStatusOverride || currentTask.status;
-    const isCompleted = this.isTaskCompleted({ ...currentTask, status: effectiveStatus }, settings.doneValue || "");
+    const isCompleted = this.isTaskCompleted({ ...currentTask, status: effectiveStatus }, String(currentSettings.doneValue || ""));
     const taskPosition = `${state.currentTaskIndex + 1}/${allTasks.length}`;
     const taskNameParts = this.formatTaskNameTwoLines(currentTask.title);
     const statusIndicator = isCompleted ? "✓" : "○";
