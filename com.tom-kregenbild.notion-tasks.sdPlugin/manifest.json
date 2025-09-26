@@ -22,7 +22,7 @@
 			]
 		},
 		{
-			"Name": "Notion Completed Tasks",
+			"Name": "Tasks Today",
 			"UUID": "com.tom-kregenbild.notion-tasks.complete.dial",
 			"Icon": "imgs/actionIcon",
 			"Tooltip": "Browse and toggle Notion task status",

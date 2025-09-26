@@ -40,7 +40,7 @@ interface ContextState {
 const logger = streamDeck.logger.createScope("CompleteTasksDialAction");
 
 const INITIAL_FEEDBACK = {
-  heading: { value: "Completed Tasks" },
+  heading: { value: "Tasks Today" },
   value: { value: "Loading..." },
   progress: 0,
 } as const;
@@ -63,7 +63,7 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
     logger.debug("onWillAppear", { context: state.id });
 
     await this.ensureLayout(state);
-    await action.setTitle("Completed Tasks");
+    await action.setTitle("Tasks Today");
     await action.setFeedback({ ...INITIAL_FEEDBACK });
 
     // Reset to summary mode on appear
@@ -481,7 +481,7 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
     });
 
     await state.action.setFeedback({
-      heading: { value: "Completed Tasks" },
+      heading: { value: "Tasks Today" },
       value: { value: `${completed} / ${total}` },
       progress: ratio,
     });
