@@ -97,8 +97,6 @@ describe("buildTaskSummary", () => {
         priority: "Meetings",
         status: "In Progress",
         due: "2024-09-05",
-        pillar: "Operations",
-        project: "Internal",
       },
       {
         id: "2",
@@ -106,8 +104,6 @@ describe("buildTaskSummary", () => {
         priority: "Remember",
         status: "Done",
         due: "2024-09-05",
-        pillar: "Operations",
-        project: "Internal",
       },
       {
         id: "3",
@@ -115,8 +111,6 @@ describe("buildTaskSummary", () => {
         priority: "Meetings",
         status: "In Progress",
         due: "2024-09-04",
-        pillar: "Operations",
-        project: "External",
       },
       {
         id: "4",
@@ -124,8 +118,6 @@ describe("buildTaskSummary", () => {
         priority: "1st Priority",
         status: "In Progress",
         due: "2024-09-03",
-        pillar: "Product",
-        project: "App",
       },
     ] as any;
 
@@ -134,8 +126,6 @@ describe("buildTaskSummary", () => {
     expect(summary.total).toBe(4);
     expect(summary.completed).toBe(1);
     expect(summary.active).toBe(3);
-    expect(summary.byPillar).toEqual({ Operations: 2, Product: 1 });
-    expect(summary.byProject).toEqual({ Internal: 1, External: 1, App: 1 });
     expect(summary.nextMeeting?.id).toBe("3");
     expect(summary.activeTasks.map(task => task.id)).toEqual(["4", "3", "1"]);
   });
@@ -200,7 +190,7 @@ describe("sanitizeMetricsOrder", () => {
     const result = sanitizeMetricsOrder(["Active", "total", "nextMeeting", "total"]);
     expect(result).toEqual(["active", "total", "nextMeeting"]);
 
-    const commaSeparated = sanitizeMetricsOrder("total, byPillar ,unknown, active");
-    expect(commaSeparated).toEqual(["total", "byPillar", "active"]);
+    const commaSeparated = sanitizeMetricsOrder("total, unknown, active");
+    expect(commaSeparated).toEqual(["total", "active"]);
   });
 });

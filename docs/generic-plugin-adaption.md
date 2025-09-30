@@ -65,12 +65,11 @@ Several settings exist in the code but are not exposed in the user interface:
 
 ### Currently Missing from UI:
 
-| Setting        | Purpose                                   | Currently Available In | Status                                                        |
-| -------------- | ----------------------------------------- | ---------------------- | ------------------------------------------------------------- |
-| `pillarProp`   | Categorize tasks by "pillar" or area      | Code only, no UI       | **Active Feature** - Used for task categorization and metrics |
-| `projectProp`  | Categorize tasks by project               | Code only, no UI       | **Active Feature** - Used for task categorization and metrics |
-| `activeValue`  | Status value for active/in-progress tasks | Dial inspector only    | **Needed** - Should be in all inspectors                      |
-| `metricsOrder` | Control order of metrics display          | Code only, no UI       | **Nice to Have** - Advanced customization                     |
+| Setting | Purpose | Currently Available In | Status |
+| ------- | ------- | ---------------------- | ------ |
+
+| `activeValue` | Status value for active/in-progress tasks | Dial inspector only | **Needed** - Should be in all inspectors |
+| `metricsOrder` | Control order of metrics display | Code only, no UI | **Nice to Have** - Advanced customization |
 
 ### Inconsistent UI Coverage:
 
@@ -210,8 +209,7 @@ export type NotionSettings = {
   dateFilter?: "today" | "tomorrow" | "weekly";
 
   // === NEW: Missing Fields Currently in Code ===
-  pillarProp?: string; // Task categorization by area/pillar
-  projectProp?: string; // Task categorization by project
+
   metricsOrder?: string[]; // Control metrics display order
 
   // === NEW: Priority System Configuration ===
@@ -441,9 +439,6 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
     customSortProperty: settings.customSortProperty,
     sortOrder: settings.sortOrder || "asc",
 
-    // NEW: Missing existing fields (pillarProp and projectProp are ACTIVE features)
-    pillarProp: trim(settings.pillarProp), // Used for task categorization metrics
-    projectProp: trim(settings.projectProp), // Used for task categorization metrics
     metricsOrder: settings.metricsOrder || DEFAULT_METRICS_ORDER,
   };
 }
@@ -466,28 +461,6 @@ Add missing fields that are currently only in dial inspector:
   <sdpi-item-description
     >Select which status value represents an active/in-progress
     task.</sdpi-item-description
-  >
-</sdpi-item>
-
-<!-- ADD: Pillar Property -->
-<sdpi-item label="Pillar/Area Property">
-  <sdpi-select setting="pillarProp" disabled>
-    <option value="">Loading properties...</option>
-  </sdpi-select>
-  <sdpi-item-description
-    >Select the property that categorizes tasks by pillar or area
-    (optional).</sdpi-item-description
-  >
-</sdpi-item>
-
-<!-- ADD: Project Property -->
-<sdpi-item label="Project Property">
-  <sdpi-select setting="projectProp" disabled>
-    <option value="">Loading properties...</option>
-  </sdpi-select>
-  <sdpi-item-description
-    >Select the property that categorizes tasks by project
-    (optional).</sdpi-item-description
   >
 </sdpi-item>
 ```
@@ -734,7 +707,7 @@ Common issues and solutions:
 ### 🚨 **Critical (Must Fix)**
 
 1. **Priority system configuration** - Blocks users with different priority values
-2. **Missing UI fields for active features** - `pillarProp` and `projectProp` are actively used for categorization but not exposed in UI
+2. **Missing UI fields for active features** - Some configuration fields may be missing from the UI
 
 ### 🔶 **High (Should Fix)**
 

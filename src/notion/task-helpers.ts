@@ -12,15 +12,13 @@ export interface NotionTask {
   title: string;
   priority?: string;
   status?: string;
-  pillar?: string;
-  project?: string;
   url?: string;
   due?: string;
   startTime?: string;
   endTime?: string;
 }
 
-export type MetricKey = "total" | "completed" | "active" | "nextMeeting" | "byPillar" | "byProject";
+export type MetricKey = "total" | "completed" | "active" | "nextMeeting";
 
 export interface TaskSummary {
   total: number;
@@ -28,8 +26,6 @@ export interface TaskSummary {
   active: number;
   activeTasks: NotionTask[];
   completedTasks: NotionTask[];
-  byPillar: Record<string, number>;
-  byProject: Record<string, number>;
   nextMeeting?: NotionTask;
   meetingPriority: string;
   metricsOrder: MetricKey[];
@@ -117,7 +113,7 @@ export const PRIORITY_ORDER = DEFAULT_PRIORITY_VALUES.reduce<Record<string, numb
   return acc;
 }, {});
 
-const METRIC_VALUES: MetricKey[] = ["total", "completed", "active", "nextMeeting", "byPillar", "byProject"];
+const METRIC_VALUES: MetricKey[] = ["total", "completed", "active", "nextMeeting"];
 
 export const DEFAULT_METRICS_ORDER: MetricKey[] = [...METRIC_VALUES];
 
@@ -319,8 +315,6 @@ export function buildTaskSummaryWithSorter(
 ): TaskSummary {
   const activeTasks: NotionTask[] = [];
   const completedTasks: NotionTask[] = [];
-  const byPillar: Record<string, number> = {};
-  const byProject: Record<string, number> = {};
   let completed = 0;
   let nextMeeting: NotionTask | undefined;
 
@@ -340,12 +334,6 @@ export function buildTaskSummaryWithSorter(
     }
 
     activeTasks.push(task);
-
-    const pillarLabel = displayLabel(task.pillar, "Unspecified");
-    incrementCount(byPillar, pillarLabel);
-
-    const projectLabel = displayLabel(task.project, "Unspecified");
-    incrementCount(byProject, projectLabel);
 
     if (!nextMeeting && meetingKeys.has(normalizePriorityKey(task.priority ?? ""))) {
       nextMeeting = task;
@@ -370,8 +358,6 @@ export function buildTaskSummaryWithSorter(
     active: activeTasks.length,
     activeTasks: taskSorter(activeTasks),
     completedTasks: taskSorter(completedTasks),
-    byPillar,
-    byProject,
     nextMeeting,
     meetingPriority,
     metricsOrder: [...metricsOrder],

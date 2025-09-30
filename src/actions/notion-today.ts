@@ -47,8 +47,6 @@ export type NotionSettings = {
   activeValue?: string;
   dateProp?: string;
   priorityProp?: string;
-  pillarProp?: string;
-  projectProp?: string;
   meetingPriority?: string;
   metricsOrder?: string | string[];
   position?: number | string;
@@ -80,8 +78,6 @@ interface NormalizedSettings {
   activeValue?: string;
   dateProp?: string;
   priorityProp?: string;
-  pillarProp?: string;
-  projectProp?: string;
   meetingPriority: string;
   metricsOrder: MetricKey[];
   position?: number;
@@ -515,7 +511,7 @@ class TaskCoordinator {
     const { normalized } = configured;
     return {
       ...normalized,
-      cacheKey: `${normalized.token}|${normalized.db}|${normalized.statusProp}|${normalized.doneValue}|${normalized.dateProp}|${normalized.priorityProp}|${normalized.pillarProp}|${normalized.projectProp}|${normalized.meetingPriority}|${normalized.metricsOrder.join(";")}|${normalized.priorityConfig.type}|${normalized.priorityConfig.values.join(",")}`,
+      cacheKey: `${normalized.token}|${normalized.db}|${normalized.statusProp}|${normalized.doneValue}|${normalized.dateProp}|${normalized.priorityProp}|${normalized.meetingPriority}|${normalized.metricsOrder.join(";")}|${normalized.priorityConfig.type}|${normalized.priorityConfig.values.join(",")}`,
     };
   }
 
@@ -874,8 +870,6 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
     activeValue: trim(settings.activeValue),
     dateProp: trim(settings.dateProp),
     priorityProp: trim(settings.priorityProp),
-    pillarProp: trim(settings.pillarProp),
-    projectProp: trim(settings.projectProp),
     meetingPriority: trim(settings.meetingPriority) ?? DEFAULT_MEETING_PRIORITY,
     metricsOrder: sanitizeMetricsOrder(settings.metricsOrder ?? DEFAULT_METRICS_ORDER),
     position: parsePosition(settings.position),
@@ -996,7 +990,7 @@ function notifySummaryListeners(summary: TaskSummary | undefined): void {
 
 function extractTask(
   page: { id: string; url?: string; properties: NotionQueryResponse["results"][number]["properties"] },
-  settings: Pick<NormalizedSettings, "statusProp" | "priorityProp" | "dateProp" | "pillarProp" | "projectProp">,
+  settings: Pick<NormalizedSettings, "statusProp" | "priorityProp" | "dateProp">,
 ): NotionTask | undefined {
   const titleProperty = Object.values(page.properties).find(prop => prop.type === "title");
   const title = titleProperty?.title?.map(piece => piece.plain_text).join("") ?? "(untitled)";
@@ -1006,16 +1000,12 @@ function extractTask(
   const status = settings.statusProp ? extractPropertyText(page.properties[settings.statusProp]) : undefined;
   const due = settings.dateProp ? extractDateValue(page.properties[settings.dateProp]) : undefined;
   const dateRange = settings.dateProp ? extractDateRange(page.properties[settings.dateProp]) : {};
-  const pillar = settings.pillarProp ? extractPropertyText(page.properties[settings.pillarProp]) : undefined;
-  const project = settings.projectProp ? extractPropertyText(page.properties[settings.projectProp]) : undefined;
 
   return {
     id: page.id,
     title,
     priority,
     status,
-    pillar,
-    project,
     due,
     startTime: dateRange.start,
     endTime: dateRange.end,
