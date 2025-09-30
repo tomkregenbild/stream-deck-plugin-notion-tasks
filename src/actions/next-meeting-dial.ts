@@ -333,7 +333,8 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
   private formatTimeDisplay(task: NotionTask): string {
     const startTime = task.startTime || task.due;
     if (!startTime) return "";
-    
+
+    const hasTime = startTime.includes("T");
     const start = new Date(startTime);
     const now = new Date();
     
@@ -341,7 +342,7 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
     const isToday = start.toDateString() === now.toDateString();
     
     // Format start time
-    const startTimeStr = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const startTimeStr = hasTime ? start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
     
     // Check if we have an end time
     if (task.endTime) {
@@ -357,14 +358,23 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
       } else if (sameDay) {
         // Future date, same day: "Dec 25 2:30-3:30 PM"
         const dateStr = start.toLocaleDateString([], { month: 'short', day: 'numeric' });
-        return `${dateStr} ${startTimeStr}-${endTimeStr}`;
+        if (hasTime) {
+          return `${dateStr} ${startTimeStr}-${endTimeStr}`;
+        }
+        return dateStr;
       } else {
         // Different days: show start date and time only for now
         if (isToday) {
-          return `${startTimeStr} (${this.calculateDuration(start, end)})`;
+          if (hasTime) {
+            return `${startTimeStr} (${this.calculateDuration(start, end)})`;
+          }
+          return `Today (${this.calculateDuration(start, end)})`;
         } else {
           const dateStr = start.toLocaleDateString([], { month: 'short', day: 'numeric' });
-          return `${dateStr} ${startTimeStr} (${this.calculateDuration(start, end)})`;
+          if (hasTime) {
+            return `${dateStr} ${startTimeStr} (${this.calculateDuration(start, end)})`;
+          }
+          return `${dateStr} (${this.calculateDuration(start, end)})`;
         }
       }
     } else {
@@ -373,7 +383,10 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
         return startTimeStr;
       } else {
         const dateStr = start.toLocaleDateString([], { month: 'short', day: 'numeric' });
-        return `${dateStr} ${startTimeStr}`;
+        if (hasTime) {
+          return `${dateStr} ${startTimeStr}`;
+        }
+        return dateStr;
       }
     }
   }
