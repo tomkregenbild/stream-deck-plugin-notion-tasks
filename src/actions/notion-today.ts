@@ -17,6 +17,7 @@ import {
   DEFAULT_METRICS_ORDER,
   DEFAULT_PRIORITY_VALUES,
   DEFAULT_PRIORITY_ALIASES,
+  SIMPLE_PRIORITY_VALUES,
   buildTaskSummary,
   buildTaskSummaryWithSorter,
   extractDateValue,
@@ -27,9 +28,12 @@ import {
   sortTasks,
   createPrioritySortIndex,
   createTaskSorter,
+  parsePriorityConfig,
   type NotionTask,
   type TaskSummary,
   type MetricKey,
+  type PrioritySystemType,
+  type PrioritySystemConfig,
 } from "../notion/task-helpers";
 
 const TITLE_MAX_LINES = 3;
@@ -51,6 +55,11 @@ export type NotionSettings = {
   dateFilter?: "today" | "tomorrow" | "weekly";
   
   // NEW: Priority system configuration
+  prioritySystemType?: PrioritySystemType; // "simple" | "custom" | "legacy"
+  customPriorities?: string; // Comma-separated list for custom type
+  customAliases?: Record<string, string>; // Optional aliases for custom priorities
+  
+  // Legacy fields - kept for backwards compatibility
   priorityValues?: string[]; // User-defined priority values in sort order (highest to lowest)
   priorityAliases?: Record<string, string>; // Optional aliases for priority values
   
@@ -79,8 +88,7 @@ interface NormalizedSettings {
   dateFilter?: "today" | "tomorrow" | "weekly";
   
   // NEW: Priority system configuration
-  priorityValues: string[];
-  priorityAliases: Record<string, string>;
+  priorityConfig: PrioritySystemConfig;
   
   _dbProperties?: Record<string, { 
     type: string; 
@@ -405,7 +413,11 @@ class TaskCoordinator {
         if (error) {
           logger.error("Error fetching tasks", { error });
         } else {
-          logger.debug("Building task summary", { taskCount: tasks.length });
+          logger.debug("Building task summary", { 
+            taskCount: tasks.length,
+            doneValue: settings.doneValue,
+            hasDoneValue: !!settings.doneValue
+          });
         }
 
         const summary = buildTaskSummaryWithSorter(
@@ -414,7 +426,7 @@ class TaskCoordinator {
           settings.meetingPriority,
           settings.metricsOrder,
           createTaskSorter(
-            createPrioritySortIndex(settings.priorityValues, settings.priorityAliases)
+            createPrioritySortIndex(settings.priorityConfig.values, settings.priorityConfig.aliases)
           ),
         );
         this.tasks = summary.activeTasks;
@@ -488,7 +500,7 @@ class TaskCoordinator {
         title: task.title,
         priority: task.priority
       });
-      descriptor = getTaskVisual(task.priority);
+      descriptor = getTaskVisual(task.priority, state.normalized?.priorityConfig);
       title = formatTaskTitle(task.title);
     }
 
@@ -503,7 +515,7 @@ class TaskCoordinator {
     const { normalized } = configured;
     return {
       ...normalized,
-      cacheKey: `${normalized.token}|${normalized.db}|${normalized.statusProp}|${normalized.doneValue}|${normalized.dateProp}|${normalized.priorityProp}|${normalized.pillarProp}|${normalized.projectProp}|${normalized.meetingPriority}|${normalized.metricsOrder.join(";")}`,
+      cacheKey: `${normalized.token}|${normalized.db}|${normalized.statusProp}|${normalized.doneValue}|${normalized.dateProp}|${normalized.priorityProp}|${normalized.pillarProp}|${normalized.projectProp}|${normalized.meetingPriority}|${normalized.metricsOrder.join(";")}|${normalized.priorityConfig.type}|${normalized.priorityConfig.values.join(",")}`,
     };
   }
 
@@ -764,7 +776,7 @@ class NotionClient {
           .map(page => extractTask(page, settings))
           .filter((task): task is NotionTask => Boolean(task));
         return { tasks: createTaskSorter(
-          createPrioritySortIndex(settings.priorityValues, settings.priorityAliases)
+          createPrioritySortIndex(settings.priorityConfig.values, settings.priorityConfig.aliases)
         )(tasks) };
       } else {
         // Default to today
@@ -803,7 +815,7 @@ class NotionClient {
         .map(page => extractTask(page, settings))
         .filter((task): task is NotionTask => Boolean(task));
       return { tasks: createTaskSorter(
-        createPrioritySortIndex(settings.priorityValues, settings.priorityAliases)
+        createPrioritySortIndex(settings.priorityConfig.values, settings.priorityConfig.aliases)
       )(tasks) };
     } catch (error) {
       return { tasks: [], error: error instanceof Error ? error.message : String(error) };
@@ -869,11 +881,44 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
     position: parsePosition(settings.position),
     dateFilter: settings.dateFilter || "today",
     
-    // NEW: Priority system configuration with backwards-compatible defaults
-    priorityValues: settings.priorityValues && settings.priorityValues.length > 0 
-      ? settings.priorityValues 
-      : DEFAULT_PRIORITY_VALUES,
-    priorityAliases: settings.priorityAliases ?? DEFAULT_PRIORITY_ALIASES,
+    // NEW: Priority system configuration with backwards compatibility
+    priorityConfig: (() => {
+      try {
+        // Handle legacy settings first
+        if (settings.priorityValues && Array.isArray(settings.priorityValues) && settings.priorityValues.length > 0) {
+          return {
+            type: "custom" as PrioritySystemType,
+            values: settings.priorityValues,
+            aliases: settings.priorityAliases && typeof settings.priorityAliases === 'object' ? settings.priorityAliases : {}
+          };
+        }
+        
+        // Use new priority system configuration
+        const config = parsePriorityConfig(
+          settings.prioritySystemType,
+          settings.customPriorities,
+          settings.customAliases
+        );
+        
+        // Ensure we have valid values
+        if (!Array.isArray(config.values) || config.values.length === 0) {
+          return {
+            type: "simple" as PrioritySystemType,
+            values: SIMPLE_PRIORITY_VALUES,
+            aliases: {}
+          };
+        }
+        
+        return config;
+      } catch (error) {
+        streamDeck.logger.warn("Error parsing priority configuration, falling back to simple system", { error });
+        return {
+          type: "simple" as PrioritySystemType,
+          values: SIMPLE_PRIORITY_VALUES,
+          aliases: {}
+        };
+      }
+    })(),
     
     _dbProperties: settings._dbProperties,
   };
@@ -901,11 +946,21 @@ export async function getNotionTasksWithDateFilter(settings: NotionSettings): Pr
       return undefined;
     }
     
-    return buildTaskSummary(
+    streamDeck.logger.debug("Building task summary for date filter", {
+      taskCount: result.tasks.length,
+      dateFilter: normalized.dateFilter,
+      doneValue: normalized.doneValue,
+      hasDoneValue: !!normalized.doneValue
+    });
+
+    return buildTaskSummaryWithSorter(
       result.tasks,
       normalized.doneValue ?? "Done",
       normalized.meetingPriority,
       normalized.metricsOrder,
+      createTaskSorter(
+        createPrioritySortIndex(normalized.priorityConfig.values, normalized.priorityConfig.aliases)
+      ),
     );
   } catch (error) {
     streamDeck.logger.error("Error fetching tasks with date filter", { error: error instanceof Error ? error.message : String(error) });
@@ -1074,6 +1129,151 @@ const BASE_VISUALS: Record<"task" | "empty" | "error" | "setup", KeyVisualDescri
   },
 };
 
+// Configurable priority color schemes - 10 different colors that cycle
+const PRIORITY_COLOR_SCHEMES: KeyVisualDescriptor[] = [
+  {
+    // Red - High Priority
+    id: "priority-0",
+    start: "#fee2e2",
+    end: "#fecaca",
+    label: "Priority 1",
+    labelColor: "#b91c1c",
+    border: "#fca5a5",
+    accent: "#fecaca",
+    badgeBg: "#ef4444",
+    badgeColor: "#7f1d1d",
+    titleColor: "#7f1d1d",
+  },
+  {
+    // Orange
+    id: "priority-1",
+    start: "#ffedd5",
+    end: "#fed7aa",
+    label: "Priority 2",
+    labelColor: "#c2410c",
+    border: "#fdba74",
+    accent: "#fed7aa",
+    badgeBg: "#fb923c",
+    badgeColor: "#7c2d12",
+    titleColor: "#9a3412",
+  },
+  {
+    // Yellow
+    id: "priority-2",
+    start: "#fefce8",
+    end: "#fde68a",
+    label: "Priority 3",
+    labelColor: "#a16207",
+    border: "#fcd34d",
+    accent: "#fef3c7",
+    badgeBg: "#f59e0b",
+    badgeColor: "#92400e",
+    titleColor: "#854d0e",
+  },
+  {
+    // Green
+    id: "priority-3",
+    start: "#ecfccb",
+    end: "#d9f99d",
+    label: "Priority 4",
+    labelColor: "#3f6212",
+    border: "#bbf7d0",
+    accent: "#dcfce7",
+    badgeBg: "#84cc16",
+    badgeColor: "#365314",
+    titleColor: "#3f6212",
+  },
+  {
+    // Blue
+    id: "priority-4",
+    start: "#e0f2fe",
+    end: "#bfdbfe",
+    label: "Priority 5",
+    labelColor: "#1d4ed8",
+    border: "#93c5fd",
+    accent: "#bfdbfe",
+    badgeBg: "#3b82f6",
+    badgeColor: "#1e3a8a",
+    titleColor: "#1e40af",
+  },
+  {
+    // Purple
+    id: "priority-5",
+    start: "#e0e7ff",
+    end: "#c7d2fe",
+    label: "Priority 6",
+    labelColor: "#4338ca",
+    border: "#a5b4fc",
+    accent: "#e0e7ff",
+    badgeBg: "#6366f1",
+    badgeColor: "#312e81",
+    titleColor: "#312e81",
+  },
+  {
+    // Pink
+    id: "priority-6",
+    start: "#fde2e4",
+    end: "#fbcfe8",
+    label: "Priority 7",
+    labelColor: "#9d174d",
+    border: "#f9a8d4",
+    accent: "#fcd8e1",
+    badgeBg: "#f472b6",
+    badgeColor: "#831843",
+    titleColor: "#9d174d",
+  },
+  {
+    // Teal
+    id: "priority-7",
+    start: "#ccfbf1",
+    end: "#a5f3fc",
+    label: "Priority 8",
+    labelColor: "#0f766e",
+    border: "#99f6e4",
+    accent: "#99f6e4",
+    badgeBg: "#2dd4bf",
+    badgeColor: "#115e59",
+    titleColor: "#0f172a",
+  },
+  {
+    // Amber
+    id: "priority-8",
+    start: "#fef6f0",
+    end: "#fde3c8",
+    label: "Priority 9",
+    labelColor: "#9a3412",
+    border: "#fbd38d",
+    accent: "#fde8ce",
+    badgeBg: "#f97316",
+    badgeColor: "#7c2d12",
+    titleColor: "#7c2d12",
+  },
+  {
+    // Slate
+    id: "priority-9",
+    start: "#f8fafc",
+    end: "#e2e8f0",
+    label: "Priority 10",
+    labelColor: "#475569",
+    border: "#cbd5e1",
+    accent: "#f1f5f9",
+    badgeBg: "#64748b",
+    badgeColor: "#1e293b",
+    titleColor: "#334155",
+  },
+];
+
+// Function to get color scheme for a priority based on its index
+function getPriorityColorScheme(priorityIndex: number, priorityValue: string): KeyVisualDescriptor {
+  const schemeIndex = priorityIndex % PRIORITY_COLOR_SCHEMES.length;
+  const scheme = PRIORITY_COLOR_SCHEMES[schemeIndex];
+  return {
+    ...scheme,
+    id: `priority-${priorityIndex}-${normalizePriorityKey(priorityValue)}`,
+    label: priorityValue
+  };
+}
+
 const PRIORITY_STYLE_MAP: Record<string, KeyVisualDescriptor> = {
   remember: {
     id: "priority-remember",
@@ -1185,19 +1385,46 @@ const PRIORITY_STYLE_MAP: Record<string, KeyVisualDescriptor> = {
   },
 };
 
-function getTaskVisual(priority?: string): KeyVisualDescriptor {
+function getTaskVisual(priority?: string, priorityConfig?: PrioritySystemConfig): KeyVisualDescriptor {
   const trimmed = priority?.trim();
   if (!trimmed) {
     return BASE_VISUALS.task;
   }
 
-  const normalizedKey = normalizePriorityKey(trimmed);
-  const mappedKey = PRIORITY_ALIASES[normalizedKey] ?? normalizedKey;
-  const style = PRIORITY_STYLE_MAP[mappedKey];
-  if (style) {
-    return { ...style, label: trimmed };
+  // If no priority config provided, fall back to legacy system
+  if (!priorityConfig) {
+    const normalizedKey = normalizePriorityKey(trimmed);
+    const mappedKey = PRIORITY_ALIASES[normalizedKey] ?? normalizedKey;
+    const style = PRIORITY_STYLE_MAP[mappedKey];
+    if (style) {
+      return { ...style, label: trimmed };
+    }
+
+    const fallbackId = normalizedKey ? `task-default-${normalizedKey}` : "task-default-custom";
+    return { ...BASE_VISUALS.task, id: fallbackId, label: trimmed };
   }
 
+  // Use configurable priority system
+  const normalizedKey = normalizePriorityKey(trimmed);
+  
+  // Check aliases first
+  const mappedKey = priorityConfig.aliases[normalizedKey] ?? normalizedKey;
+  
+  // Find the priority in the configured values
+  let priorityIndex = -1;
+  for (let i = 0; i < priorityConfig.values.length; i++) {
+    if (normalizePriorityKey(priorityConfig.values[i]) === mappedKey) {
+      priorityIndex = i;
+      break;
+    }
+  }
+
+  // If found in the configured priorities, use the color scheme
+  if (priorityIndex >= 0) {
+    return getPriorityColorScheme(priorityIndex, trimmed);
+  }
+
+  // Fallback for unknown priorities
   const fallbackId = normalizedKey ? `task-default-${normalizedKey}` : "task-default-custom";
   return { ...BASE_VISUALS.task, id: fallbackId, label: trimmed };
 }

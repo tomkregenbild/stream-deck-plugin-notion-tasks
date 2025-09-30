@@ -44,6 +44,20 @@
         <sdpi-item-description>Select the Priority property from your Notion database (optional - enables color-coded buttons).</sdpi-item-description>
     </sdpi-item>
 
+    <sdpi-item label="Priority System">
+        <sdpi-select setting="prioritySystemType" value="simple">
+            <option value="simple" selected>Simple (High, Medium, Low)</option>
+            <option value="custom">Custom (comma-separated list)</option>
+            <option value="legacy">Legacy (original hardcoded values)</option>
+        </sdpi-select>
+        <sdpi-item-description>Choose how to configure your priority system. Simple uses High/Medium/Low, Custom allows your own list, Legacy preserves original behavior.</sdpi-item-description>
+    </sdpi-item>
+
+    <sdpi-item label="Custom Priorities" id="custom-priorities-item">
+        <sdpi-textfield setting="customPriorities" placeholder="High, Medium, Low"></sdpi-textfield>
+        <sdpi-item-description>Enter your priority values in order from highest to lowest priority, separated by commas. Supports up to 20 priorities (colors will cycle after 10).</sdpi-item-description>
+    </sdpi-item>
+
     <sdpi-item label="Task Slot">
         <sdpi-select setting="position">
             <option value="1">Task Slot 1</option>
@@ -199,6 +213,22 @@
             if (actualSettings.dateProp) dateSelect.value = actualSettings.dateProp;
             if (actualSettings.doneValue) doneSelect.value = actualSettings.doneValue;
             if (actualSettings.priorityProp) prioritySelect.value = actualSettings.priorityProp;
+            
+            // Handle priority system type with debugging
+            const prioritySystemSelect = document.querySelector('sdpi-select[setting="prioritySystemType"]');
+            if (prioritySystemSelect) {
+                console.log('PI: updateDropdowns - current prioritySystemType in settings:', actualSettings.prioritySystemType);
+                console.log('PI: updateDropdowns - current dropdown value:', prioritySystemSelect.value);
+                
+                if (actualSettings.prioritySystemType) {
+                    console.log('PI: Setting dropdown to:', actualSettings.prioritySystemType);
+                    prioritySystemSelect.value = actualSettings.prioritySystemType;
+                } else {
+                    console.log('PI: No prioritySystemType in settings, keeping default');
+                }
+                
+                console.log('PI: updateDropdowns - dropdown value after update:', prioritySystemSelect.value);
+            }
 
             // Add event listener for status property changes
             statusSelect.addEventListener('change', (event) => {
@@ -209,18 +239,426 @@
                         doneSelect.appendChild(new Option(option.name, option.name));
                     });
                 }
+                
+                // Enable the done value select and force UI refresh
+                doneSelect.disabled = false;
+                
+                // Use setAttribute to ensure SDPI detects the change
+                doneSelect.setAttribute('disabled', 'false');
+                doneSelect.removeAttribute('disabled');
+                
+                // Manually trigger value change to force SDPI update
+                const changeEvent = new Event('change', { bubbles: true, cancelable: true });
+                statusSelect.dispatchEvent(changeEvent);
+                
+                setTimeout(() => {
+                    forceUIRefresh();
+                    
+                    // Also manually update the select's internal state
+                    if (doneSelect.shadowRoot) {
+                        const shadowSelect = doneSelect.shadowRoot.querySelector('select');
+                        if (shadowSelect) {
+                            shadowSelect.disabled = false;
+                        }
+                    }
+                }, 10);
             });
+            
+            // Set up mutation observer to watch for changes and refresh UI
+            const observer = new MutationObserver((mutations) => {
+                let shouldRefresh = false;
+                mutations.forEach((mutation) => {
+                    if (mutation.type === 'attributes' && 
+                        (mutation.attributeName === 'disabled' || mutation.attributeName === 'value')) {
+                        shouldRefresh = true;
+                    }
+                });
+                
+                if (shouldRefresh) {
+                    setTimeout(() => {
+                        forceUIRefresh();
+                    }, 10);
+                }
+            });
+            
+            // Observe all form elements for changes
+            const formElements = document.querySelectorAll('sdpi-select, sdpi-textfield, sdpi-password');
+            formElements.forEach(element => {
+                observer.observe(element, { 
+                    attributes: true, 
+                    attributeFilter: ['disabled', 'value'] 
+                });
+            });
+            
+            // Add listeners for token and database changes to enable dependent fields
+            const tokenField = document.querySelector('sdpi-password[setting="token"]');
+            const dbField = document.querySelector('sdpi-textfield[setting="db"]');
+            
+            const handleConnectionChange = () => {
+                setTimeout(() => {
+                    console.log('PI: Connection fields changed, triggering settings update');
+                    
+                    // Settings-based approach: Force a settings update to trigger refresh
+                    streamDeckClient.getSettings().then(settingsResponse => {
+                        const currentSettings = settingsResponse.settings || settingsResponse;
+                        const tokenValue = tokenField?.value || tokenField?.getAttribute('value');
+                        const dbValue = dbField?.value || dbField?.getAttribute('value');
+                        
+                        console.log('PI: Current connection values:', { token: !!tokenValue, db: !!dbValue });
+                        
+                        if (tokenValue && dbValue && !currentSettings._dbProperties && !currentSettings._dbPropertiesError) {
+                            // Trigger property fetch via settings update
+                            const updatedSettings = {
+                                ...currentSettings,
+                                token: tokenValue,
+                                db: dbValue,
+                                _triggerPropertyFetch: Date.now(),
+                                _uiRefreshTrigger: Date.now()
+                            };
+                            
+                            console.log('PI: Triggering property fetch via settings update');
+                            streamDeckClient.setSettings(updatedSettings);
+                        }
+                    });
+                }, 200);
+            };
+            
+            if (tokenField) {
+                tokenField.addEventListener('input', handleConnectionChange);
+                tokenField.addEventListener('change', handleConnectionChange);
+            }
+            if (dbField) {
+                dbField.addEventListener('input', handleConnectionChange);  
+                dbField.addEventListener('change', handleConnectionChange);
+            }
+        }
+
+        // Force UI refresh function - using SDPI native methods
+        function forceUIRefresh() {
+            console.log('PI: Forcing UI refresh with SDPI methods');
+            
+            // Method 1: Use SDPI's built-in refresh if available
+            if (typeof SDPIComponents !== 'undefined' && SDPIComponents.refresh) {
+                SDPIComponents.refresh();
+                console.log('PI: Used SDPIComponents.refresh()');
+            }
+            
+            // Method 2: Trigger SDPI update event
+            if (streamDeckClient && typeof streamDeckClient.sendToPlugin === 'function') {
+                streamDeckClient.sendToPlugin({ event: 'refreshUI' });
+                console.log('PI: Sent refreshUI event to plugin');
+            }
+            
+            // Method 3: Force DOM reflow by reading layout properties
+            const allElements = document.querySelectorAll('sdpi-item');
+            allElements.forEach(element => {
+                // Force reflow by reading offsetHeight
+                const height = element.offsetHeight;
+                element.style.transform = 'translateZ(0)';
+                setTimeout(() => {
+                    element.style.transform = '';
+                }, 1);
+            });
+            
+            // Method 4: Dispatch SDPI-specific events
+            ['sdpi-item-change', 'sdpi-update', 'change'].forEach(eventType => {
+                const event = new CustomEvent(eventType, { 
+                    bubbles: true, 
+                    cancelable: true,
+                    detail: { source: 'manual-refresh' }
+                });
+                document.dispatchEvent(event);
+            });
+        }
+
+        // Track user selections to prevent backend overrides
+        let userSelectedPriorityType = null;
+        let lastUserSelection = null;
+
+        function updatePrioritySystemVisibility(settings) {
+            // Use user selection if available, otherwise use settings value
+            const prioritySystemType = userSelectedPriorityType || settings?.prioritySystemType || 'simple';
+            const customPrioritiesItem = document.getElementById('custom-priorities-item');
+            const prioritySystemSelect = document.querySelector('sdpi-select[setting="prioritySystemType"]');
+            
+            console.log('PI: updatePrioritySystemVisibility called', {
+                prioritySystemType,
+                userSelected: userSelectedPriorityType,
+                settingsValue: settings?.prioritySystemType,
+                dropdownValue: prioritySystemSelect?.value,
+                hasCustomItem: !!customPrioritiesItem
+            });
+            
+            // Always prioritize user selection over settings
+            const finalValue = userSelectedPriorityType || prioritySystemType;
+            
+            // Ensure the dropdown reflects the correct value
+            if (prioritySystemSelect && prioritySystemSelect.value !== finalValue) {
+                console.log('PI: Syncing dropdown value to final value:', finalValue);
+                prioritySystemSelect.value = finalValue;
+            }
+            
+            if (customPrioritiesItem) {
+                if (finalValue === 'custom') {
+                    // Multiple approaches to make it visible
+                    customPrioritiesItem.style.display = '';
+                    customPrioritiesItem.style.visibility = 'visible';
+                    customPrioritiesItem.removeAttribute('hidden');
+                    customPrioritiesItem.classList.remove('hidden');
+                    
+                    // Also try to enable the textfield inside
+                    const textfield = customPrioritiesItem.querySelector('sdpi-textfield[setting="customPriorities"]');
+                    if (textfield) {
+                        textfield.removeAttribute('disabled');
+                        textfield.style.display = '';
+                    }
+                    
+                    console.log('PI: Showing custom priorities field');
+                } else {
+                    customPrioritiesItem.style.display = 'none';
+                    console.log('PI: Hiding custom priorities field');
+                }
+                
+                // Force the element to re-render by changing a harmless property
+                const currentOpacity = customPrioritiesItem.style.opacity;
+                customPrioritiesItem.style.opacity = '0.999';
+                setTimeout(() => {
+                    customPrioritiesItem.style.opacity = currentOpacity || '';
+                }, 1);
+            } else {
+                console.log('PI: Custom priorities item not found!');
+            }
+        }
+
+        // Add event listener for priority system type changes
+        function setupPrioritySystemListener() {
+            const prioritySystemSelect = document.querySelector('sdpi-select[setting="prioritySystemType"]');
+            const customPrioritiesItem = document.getElementById('custom-priorities-item');
+            
+            console.log('PI: setupPrioritySystemListener called', {
+                hasSelect: !!prioritySystemSelect,
+                hasCustomItem: !!customPrioritiesItem,
+                selectTagName: prioritySystemSelect?.tagName,
+                hasShadowRoot: !!prioritySystemSelect?.shadowRoot
+            });
+            
+            // Initially hide the custom priorities field
+            if (customPrioritiesItem) {
+                customPrioritiesItem.style.display = 'none';
+                console.log('PI: Initially hiding custom priorities field');
+            }
+            
+            if (prioritySystemSelect) {
+                // Check and log the initial value
+                console.log('PI: Priority select initial value:', prioritySystemSelect.value);
+                
+                // Function to get the real selected option from SDPI shadow DOM
+                const getRealSelectedValue = () => {
+                    if (prioritySystemSelect.shadowRoot) {
+                        const shadowSelect = prioritySystemSelect.shadowRoot.querySelector('select');
+                        if (shadowSelect) {
+                            console.log('PI: Found value in shadow DOM:', shadowSelect.value);
+                            return shadowSelect.value;
+                        }
+                    }
+                    
+                    // Fallback if shadow DOM is not accessible
+                    console.warn('PI: Could not find shadow DOM, falling back to element value.');
+                    return prioritySystemSelect.value;
+                };
+                
+                // Don't trigger change event for initial load - only for actual user changes
+                let isInitialLoad = true;
+                
+                // Track user clicks more directly
+                let pendingUserSelection = null;
+                
+                // Listen for mousedown on the select element to capture user intent
+                prioritySystemSelect.addEventListener('mousedown', (event) => {
+                    console.log('PI: Select mousedown - preparing to track selection');
+                    
+                    // Clear any pending selection
+                    pendingUserSelection = null;
+                    
+                    // Set up a one-time listener for the next click inside the dropdown
+                    const handleOptionClick = (e) => {
+                        // Try to determine what was clicked
+                        const clickTarget = e.target;
+                        console.log('PI: Click target:', {
+                            tagName: clickTarget.tagName,
+                            textContent: clickTarget.textContent ? clickTarget.textContent.substring(0, 50) + '...' : '',
+                            value: clickTarget.value
+                        });
+                        
+                        // If it's an option or contains option text, extract the value
+                        if (clickTarget.tagName === 'OPTION') {
+                            pendingUserSelection = clickTarget.value;
+                            console.log('PI: Direct option click detected:', pendingUserSelection);
+                        } else if (clickTarget.textContent) {
+                            // Only try text matching if the text is short (likely a single option)
+                            const text = clickTarget.textContent.trim();
+                            if (text.length < 100) { // Avoid matching entire dropdown text
+                                if (text.includes('Simple') && !text.includes('Custom') && !text.includes('Legacy')) {
+                                    pendingUserSelection = 'simple';
+                                    console.log('PI: Text-based selection detected: simple');
+                                } else if (text.includes('Custom') && !text.includes('Simple') && !text.includes('Legacy')) {
+                                    pendingUserSelection = 'custom';
+                                    console.log('PI: Text-based selection detected: custom');
+                                } else if (text.includes('Legacy') && !text.includes('Simple') && !text.includes('Custom')) {
+                                    pendingUserSelection = 'legacy';
+                                    console.log('PI: Text-based selection detected: legacy');
+                                } else {
+                                    console.log('PI: Text content too ambiguous, skipping click tracking');
+                                }
+                            } else {
+                                console.log('PI: Text content too long (full dropdown), skipping click tracking');
+                            }
+                        }
+                        
+                        // Remove the listener after first click
+                        document.removeEventListener('click', handleOptionClick, true);
+                    };
+                    
+                    // Add capture listener for clicks anywhere
+                    setTimeout(() => {
+                        document.addEventListener('click', handleOptionClick, true);
+                    }, 10);
+                });
+                
+                const handlePriorityChange = (event) => {
+                    console.log('PI: Change event triggered');
+                    
+                    // Delay slightly to allow the component to update its internal state
+                    setTimeout(() => {
+                        const selectedValue = getRealSelectedValue();
+                        
+                        console.log('PI: Priority system changed to:', selectedValue);
+                        
+                        handleActualPriorityChange(selectedValue);
+                    }, 10);
+                };
+                
+                const handleActualPriorityChange = (selectedValue) => {
+                    // Immediately store the user's selection to prevent overrides
+                    userSelectedPriorityType = selectedValue;
+                    lastUserSelection = Date.now();
+                    
+                    console.log('PI: Stored user selection:', selectedValue);
+                    
+                    // Immediately update visibility without waiting for backend
+                    const customPrioritiesItem = document.getElementById('custom-priorities-item');
+                    if (customPrioritiesItem) {
+                        if (selectedValue === 'custom') {
+                            customPrioritiesItem.style.display = '';
+                            customPrioritiesItem.style.visibility = 'visible';
+                            console.log('PI: Immediately showing custom field');
+                        } else {
+                            customPrioritiesItem.style.display = 'none';
+                            console.log('PI: Immediately hiding custom field');
+                        }
+                    }
+                    
+                    // Now save to settings
+                    streamDeckClient.getSettings().then(settingsResponse => {
+                        const currentSettings = settingsResponse.settings || settingsResponse;
+                        
+                        const updatedSettings = {
+                            ...currentSettings,
+                            prioritySystemType: selectedValue // Explicitly set the user's choice
+                        };
+                        
+                        console.log('PI: Saving settings with prioritySystemType:', selectedValue);
+                        
+                        return streamDeckClient.setSettings(updatedSettings);
+                    }).then(() => {
+                        console.log('PI: Settings saved successfully');
+                        
+                        // Clear the user selection tracking after a delay to allow settings to propagate
+                        setTimeout(() => {
+                            if (Date.now() - lastUserSelection > 2000) { // Clear after 2 seconds
+                                console.log('PI: Clearing user selection tracking');
+                                userSelectedPriorityType = null;
+                            }
+                        }, 2500);
+                        
+                    }).catch(error => {
+                        console.error('PI: Error saving settings:', error);
+                    });
+                };
+                
+                // Listen for SDPI-specific events as well as standard events
+                prioritySystemSelect.addEventListener('change', handlePriorityChange);
+                prioritySystemSelect.addEventListener('input', handlePriorityChange);
+                
+                // Try to listen for SDPI-specific events
+                prioritySystemSelect.addEventListener('sdpi-item-change', handlePriorityChange);
+                
+                // Monitor attribute changes (SDPI might update via attributes)
+                if (typeof MutationObserver !== 'undefined') {
+                    const observer = new MutationObserver((mutations) => {
+                        mutations.forEach((mutation) => {
+                            if (mutation.type === 'attributes' && 
+                                (mutation.attributeName === 'value' || mutation.attributeName === 'data-value')) {
+                                console.log('PI: Attribute change detected:', mutation.attributeName, '=', prioritySystemSelect.getAttribute(mutation.attributeName));
+                                
+                                if (!isInitialLoad) {
+                                    const newValue = getRealSelectedValue();
+                                    console.log('PI: Attribute change triggered, new value:', newValue);
+                                    handleActualPriorityChange(newValue);
+                                }
+                            }
+                        });
+                    });
+                    
+                    observer.observe(prioritySystemSelect, {
+                        attributes: true,
+                        attributeFilter: ['value', 'data-value']
+                    });
+                }
+                
+                // Set initial load flag to false after a delay to ensure we catch real user changes
+                setTimeout(() => {
+                    isInitialLoad = false;
+                    console.log('PI: Initial load flag cleared - ready for user changes');
+                }, 1000);
+            } else {
+                console.log('PI: Priority system select not found!');
+            }
         }
 
         // Listen for settings changes using the SDPI Components pattern
         streamDeckClient.onDidReceiveSettings = (settingsResponse) => {
-            console.log('PI: onDidReceiveSettings called with sanitized data:', {
-                hasSettings: !!settingsResponse.payload?.settings,
-                hasToken: !!settingsResponse.payload?.settings?.token,
-                hasDb: !!settingsResponse.payload?.settings?.db
-            });
+            console.log('PI: onDidReceiveSettings called');
             const actualSettings = settingsResponse.settings || settingsResponse;
+            
+            console.log('PI: Raw settings received:', {
+                prioritySystemType: actualSettings.prioritySystemType,
+                hasUserSelection: !!userSelectedPriorityType,
+                userSelection: userSelectedPriorityType,
+                timeSinceUserSelection: lastUserSelection ? Date.now() - lastUserSelection : 'none'
+            });
+            
+            // If we have a recent user selection, ignore settings updates that contradict it
+            if (userSelectedPriorityType && lastUserSelection && (Date.now() - lastUserSelection < 3000)) {
+                console.log('PI: Ignoring settings update - using user selection:', userSelectedPriorityType);
+                
+                // Force the settings to match user selection if they don't
+                if (actualSettings.prioritySystemType !== userSelectedPriorityType) {
+                    console.log('PI: Settings mismatch! Correcting...');
+                    const correctedSettings = {
+                        ...actualSettings,
+                        prioritySystemType: userSelectedPriorityType
+                    };
+                    
+                    // Update settings again to match user selection
+                    setTimeout(() => {
+                        streamDeckClient.setSettings(correctedSettings);
+                    }, 100);
+                }
+            }
+            
             updateDropdowns(settingsResponse);
+            updatePrioritySystemVisibility(actualSettings);
             
             // Clear properties error when token or database ID changes
             if (actualSettings._dbPropertiesError && (actualSettings.token || actualSettings.db)) {
@@ -236,38 +674,85 @@
         // Force property fetch when inspector loads if needed
         document.addEventListener('DOMContentLoaded', () => {
             console.log('PI: DOMContentLoaded event fired!');
-            streamDeckClient.getSettings().then(settingsResponse => {
-                console.log('PI: Initial settings received with sanitized data:', {
-                    hasSettings: !!settingsResponse.payload?.settings,
-                    hasToken: !!settingsResponse.payload?.settings?.token,
-                    hasDb: !!settingsResponse.payload?.settings?.db
-                });
-                const actualSettings = settingsResponse.settings || settingsResponse;
-                updateDropdowns(settingsResponse);
+            
+            // Add a small delay to ensure SDPI components are fully loaded
+            setTimeout(() => {
+                console.log('PI: Setting up priority system after delay');
                 
-                // If we have token and db but no properties, force a fetch
-                if (actualSettings?.token && actualSettings?.db && !actualSettings._dbProperties && !actualSettings._dbPropertiesError) {
-                    console.log('PI: Forcing initial property fetch');
+                // Debug: List all elements to see what's available
+                const allElements = document.querySelectorAll('*');
+                console.log('PI: Total elements found:', allElements.length);
+                
+                const prioritySystemSelect = document.querySelector('sdpi-select[setting="prioritySystemType"]');
+                const customPrioritiesItem = document.getElementById('custom-priorities-item');
+                
+                console.log('PI: Element check after delay:', {
+                    prioritySystemSelect: !!prioritySystemSelect,
+                    customPrioritiesItem: !!customPrioritiesItem,
+                    prioritySystemSelectType: prioritySystemSelect?.tagName,
+                    customItemType: customPrioritiesItem?.tagName
+                });
+                
+                setupPrioritySystemListener();
+                
+                streamDeckClient.getSettings().then(settingsResponse => {
+                    console.log('PI: Initial settings received with sanitized data:', {
+                        hasSettings: !!settingsResponse.payload?.settings,
+                        hasToken: !!settingsResponse.payload?.settings?.token,
+                        hasDb: !!settingsResponse.payload?.settings?.db
+                    });
+                    const actualSettings = settingsResponse.settings || settingsResponse;
                     
-                    // Try the message method which should send to plugin
-                    if (typeof streamDeckClient.message === 'function') {
-                        console.log('PI: Trying streamDeckClient.message for initial fetch');
-                        streamDeckClient.message({ event: 'fetchDatabaseProperties' });
-                    } else {
-                        console.log('PI: Using settings change approach for initial fetch');
-                        // Fallback: trigger via settings change
-                        const triggerSettings = {
-                            ...actualSettings,
-                            _triggerPropertyFetch: Date.now()
-                        };
-                        streamDeckClient.setSettings(triggerSettings);
+                    console.log('PI: Initial settings - prioritySystemType:', actualSettings.prioritySystemType);
+                    
+                    // Check dropdown state before and after updateDropdowns
+                    const prioritySelect = document.querySelector('sdpi-select[setting="prioritySystemType"]');
+                    console.log('PI: Dropdown value before updateDropdowns:', prioritySelect?.value);
+                    
+                    updateDropdowns(settingsResponse);
+                    updatePrioritySystemVisibility(actualSettings);
+                    
+                    console.log('PI: Dropdown value after updateDropdowns:', prioritySelect?.value);
+                    
+                    // Force UI refresh after initial load
+                    setTimeout(() => {
+                        forceUIRefresh();
+                        console.log('PI: Dropdown value after refresh:', prioritySelect?.value);
+                    }, 100);
+                    
+                    // If we have token and db but no properties, force a fetch
+                    if (actualSettings?.token && actualSettings?.db && !actualSettings._dbProperties && !actualSettings._dbPropertiesError) {
+                        console.log('PI: Forcing initial property fetch');
+                        
+                        // Try the message method which should send to plugin
+                        if (typeof streamDeckClient.message === 'function') {
+                            console.log('PI: Trying streamDeckClient.message for initial fetch');
+                            streamDeckClient.message({ event: 'fetchDatabaseProperties' });
+                        } else {
+                            console.log('PI: Using settings change approach for initial fetch');
+                            // Fallback: trigger via settings change
+                            const triggerSettings = {
+                                ...actualSettings,
+                                _triggerPropertyFetch: Date.now()
+                            };
+                            streamDeckClient.setSettings(triggerSettings);
+                        }
                     }
-                }
-            });
+                });
+            }, 100); // Small delay to ensure SDPI is ready
         });
         
         // Initial update
-        streamDeckClient.getSettings().then(updateDropdowns);
+        streamDeckClient.getSettings().then(settingsResponse => {
+            updateDropdowns(settingsResponse);
+            const actualSettings = settingsResponse.settings || settingsResponse;
+            updatePrioritySystemVisibility(actualSettings);
+            
+            // Force UI refresh after initial update
+            setTimeout(() => {
+                forceUIRefresh();
+            }, 150);
+        });
     </script>
 </body>
 </html>

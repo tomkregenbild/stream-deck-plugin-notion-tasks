@@ -60,6 +60,55 @@ export const DEFAULT_PRIORITY_ALIASES: Record<string, string> = {
   "fifth-priority": "5th-priority",
 };
 
+// Simple priority system - configurable default
+export const SIMPLE_PRIORITY_VALUES = ["High", "Medium", "Low"];
+
+// Priority system configuration types
+export type PrioritySystemType = "simple" | "custom" | "legacy";
+
+export interface PrioritySystemConfig {
+  type: PrioritySystemType;
+  values: string[];
+  aliases: Record<string, string>;
+}
+
+// Function to parse priority configuration from settings
+export function parsePriorityConfig(
+  priorityType?: PrioritySystemType,
+  customPriorities?: string,
+  customAliases?: Record<string, string>
+): PrioritySystemConfig {
+  if (priorityType === "custom" && customPriorities) {
+    // Parse comma-separated values
+    const values = customPriorities
+      .split(",")
+      .map(p => p.trim())
+      .filter(p => p.length > 0)
+      .slice(0, 20); // Limit to 20 priorities max
+    
+    return {
+      type: "custom",
+      values: values.length > 0 ? values : SIMPLE_PRIORITY_VALUES,
+      aliases: customAliases && typeof customAliases === 'object' ? customAliases : {}
+    };
+  }
+  
+  if (priorityType === "simple") {
+    return {
+      type: "simple",
+      values: SIMPLE_PRIORITY_VALUES,
+      aliases: {}
+    };
+  }
+  
+  // Default to simple for new users, legacy for backwards compatibility only when explicitly set
+  return {
+    type: "simple",
+    values: SIMPLE_PRIORITY_VALUES,
+    aliases: {}
+  };
+}
+
 // Legacy constants for backwards compatibility (deprecated)
 export const PRIORITY_SEQUENCE = DEFAULT_PRIORITY_VALUES as readonly string[];
 export const PRIORITY_ALIASES = DEFAULT_PRIORITY_ALIASES;
@@ -81,7 +130,10 @@ export function createPrioritySortIndex(
   priorityValues: string[],
   aliases: Record<string, string> = {}
 ): (priority?: string) => number {
-  const priorityOrder = priorityValues.reduce<Record<string, number>>(
+  // Defensive check - ensure priorityValues is an array
+  const safeValues = Array.isArray(priorityValues) ? priorityValues : DEFAULT_PRIORITY_VALUES;
+  
+  const priorityOrder = safeValues.reduce<Record<string, number>>(
     (acc, value, index) => {
       acc[normalizePriorityKey(value)] = index;
       return acc;
@@ -90,15 +142,15 @@ export function createPrioritySortIndex(
   );
 
   return (priority?: string): number => {
-    if (!priority) return priorityValues.length + 1;
+    if (!priority) return safeValues.length + 1;
 
     const normalizedKey = normalizePriorityKey(priority);
-    if (!normalizedKey) return priorityValues.length + 1;
+    if (!normalizedKey) return safeValues.length + 1;
     
     const mappedKey = aliases[normalizedKey] ?? normalizedKey;
     const index = priorityOrder[mappedKey];
 
-    return index !== undefined ? index : priorityValues.length + 1;
+    return index !== undefined ? index : safeValues.length + 1;
   };
 }
 
