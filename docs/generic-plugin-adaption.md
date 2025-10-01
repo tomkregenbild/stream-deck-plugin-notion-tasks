@@ -65,18 +65,18 @@ Several settings exist in the code but are not exposed in the user interface:
 
 ### Currently Missing from UI:
 
-| Setting | Purpose | Currently Available In | Status |
-| ------- | ------- | ---------------------- | ------ |
-
-| `activeValue` | Status value for active/in-progress tasks | Dial inspector only | **Needed** - Should be in all inspectors |
-| `metricsOrder` | Control order of metrics display | Code only, no UI | **Nice to Have** - Advanced customization |
+| Setting        | Purpose                          | Currently Available In | Status                                    |
+| -------------- | -------------------------------- | ---------------------- | ----------------------------------------- |
+| `metricsOrder` | Control order of metrics display | Code only, no UI       | **Nice to Have** - Advanced customization |
 
 ### Inconsistent UI Coverage:
 
-| Setting           | Task Key Inspector | Dial Inspector | Next Meeting Inspector |
-| ----------------- | ------------------ | -------------- | ---------------------- |
-| `activeValue`     | ❌ Missing         | ✅ Present     | ❌ N/A                 |
-| `meetingPriority` | ❌ Missing         | ❌ Missing     | ✅ Present             |
+| Setting           | Task Key Inspector | Dial Inspector | Next Meeting Inspector | Status                                            |
+| ----------------- | ------------------ | -------------- | ---------------------- | ------------------------------------------------- |
+| `activeValue`     | ❌ Not Needed      | ✅ Present     | ❌ Not Needed          | **Correct** - Only Tasks Dial toggles task status |
+| `meetingPriority` | ❌ Missing         | ❌ Missing     | ✅ Present             | **Should Add** - Inconsistent across inspectors   |
+
+**Note**: `activeValue` analysis was corrected after code review. It's only used by the Tasks Dial for toggling task status between active and complete states. Other actions either don't manage task status (habits, meetings) or only mark tasks as complete without toggling back (task keys).
 
 ## 3. **Hardcoded Date Filter Labels**
 
@@ -450,17 +450,19 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
 
 #### A. **Task Key Inspector** (`task-key-inspector.html`)
 
-Add missing fields that are currently only in dial inspector:
+**No changes needed for `activeValue`** - Task keys only mark tasks as complete and don't need to toggle back to active state.
+
+Add missing meeting priority field for consistency:
 
 ```html
-<!-- ADD: Active Status Value -->
-<sdpi-item label="Active Status Value">
-  <sdpi-select setting="activeValue" disabled>
-    <option value="">Loading values...</option>
-  </sdpi-select>
+<!-- ADD: Meeting Priority Value (for consistency with other inspectors) -->
+<sdpi-item label="Meeting Priority Value">
+  <sdpi-textfield
+    setting="meetingPriority"
+    placeholder="Meeting"
+  ></sdpi-textfield>
   <sdpi-item-description
-    >Select which status value represents an active/in-progress
-    task.</sdpi-item-description
+    >Priority value that indicates meeting tasks.</sdpi-item-description
   >
 </sdpi-item>
 ```
@@ -707,12 +709,11 @@ Common issues and solutions:
 ### 🚨 **Critical (Must Fix)**
 
 1. **Priority system configuration** - Blocks users with different priority values
-2. **Missing UI fields for active features** - Some configuration fields may be missing from the UI
 
 ### 🔶 **High (Should Fix)**
 
-3. **Meeting filter system** - Replace single priority-based detection with flexible filtering
-4. **Active value in all inspectors** - Consistency across UI
+2. **Meeting filter system** - Replace single priority-based detection with flexible filtering
+3. **Meeting priority consistency** - Add `meetingPriority` field to Task Key inspector for consistency
 
 ### 🔷 **Medium (Nice to Have)**
 
