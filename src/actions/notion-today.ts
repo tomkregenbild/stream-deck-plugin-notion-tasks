@@ -14,7 +14,6 @@ import type { KeyAction } from "@elgato/streamdeck";
 import {
   PRIORITY_ALIASES,
   DEFAULT_MEETING_PRIORITY,
-  DEFAULT_METRICS_ORDER,
   DEFAULT_PRIORITY_VALUES,
   DEFAULT_PRIORITY_ALIASES,
   SIMPLE_PRIORITY_VALUES,
@@ -24,14 +23,12 @@ import {
   extractDateRange,
   extractPropertyText,
   normalizePriorityKey,
-  sanitizeMetricsOrder,
   sortTasks,
   createPrioritySortIndex,
   createTaskSorter,
   parsePriorityConfig,
   type NotionTask,
   type TaskSummary,
-  type MetricKey,
   type PrioritySystemType,
   type PrioritySystemConfig,
 } from "../notion/task-helpers";
@@ -48,7 +45,6 @@ export type NotionSettings = {
   dateProp?: string;
   priorityProp?: string;
   meetingPriority?: string;
-  metricsOrder?: string | string[];
   position?: number | string;
   dateFilter?: "today" | "tomorrow" | "weekly";
   
@@ -79,7 +75,6 @@ interface NormalizedSettings {
   dateProp?: string;
   priorityProp?: string;
   meetingPriority: string;
-  metricsOrder: MetricKey[];
   position?: number;
   dateFilter?: "today" | "tomorrow" | "weekly";
   
@@ -420,7 +415,6 @@ class TaskCoordinator {
           tasks,
           settings.doneValue ?? "Done", // Fallback to "Done" if doneValue is not set
           settings.meetingPriority,
-          settings.metricsOrder,
           createTaskSorter(
             createPrioritySortIndex(settings.priorityConfig.values, settings.priorityConfig.aliases)
           ),
@@ -511,7 +505,7 @@ class TaskCoordinator {
     const { normalized } = configured;
     return {
       ...normalized,
-      cacheKey: `${normalized.token}|${normalized.db}|${normalized.statusProp}|${normalized.doneValue}|${normalized.dateProp}|${normalized.priorityProp}|${normalized.meetingPriority}|${normalized.metricsOrder.join(";")}|${normalized.priorityConfig.type}|${normalized.priorityConfig.values.join(",")}`,
+      cacheKey: `${normalized.token}|${normalized.db}|${normalized.statusProp}|${normalized.doneValue}|${normalized.dateProp}|${normalized.priorityProp}|${normalized.meetingPriority}|${normalized.priorityConfig.type}|${normalized.priorityConfig.values.join(",")}`,
     };
   }
 
@@ -871,7 +865,6 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
     dateProp: trim(settings.dateProp),
     priorityProp: trim(settings.priorityProp),
     meetingPriority: trim(settings.meetingPriority) ?? DEFAULT_MEETING_PRIORITY,
-    metricsOrder: sanitizeMetricsOrder(settings.metricsOrder ?? DEFAULT_METRICS_ORDER),
     position: parsePosition(settings.position),
     dateFilter: settings.dateFilter || "today",
     
@@ -951,7 +944,6 @@ export async function getNotionTasksWithDateFilter(settings: NotionSettings): Pr
       result.tasks,
       normalized.doneValue ?? "Done",
       normalized.meetingPriority,
-      normalized.metricsOrder,
       createTaskSorter(
         createPrioritySortIndex(normalized.priorityConfig.values, normalized.priorityConfig.aliases)
       ),

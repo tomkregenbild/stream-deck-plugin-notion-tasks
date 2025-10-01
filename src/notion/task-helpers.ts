@@ -18,8 +18,6 @@ export interface NotionTask {
   endTime?: string;
 }
 
-export type MetricKey = "total" | "completed" | "active" | "nextMeeting";
-
 export interface TaskSummary {
   total: number;
   completed: number;
@@ -28,7 +26,6 @@ export interface TaskSummary {
   completedTasks: NotionTask[];
   nextMeeting?: NotionTask;
   meetingPriority: string;
-  metricsOrder: MetricKey[];
   generatedAt: number;
 }
 
@@ -113,9 +110,7 @@ export const PRIORITY_ORDER = DEFAULT_PRIORITY_VALUES.reduce<Record<string, numb
   return acc;
 }, {});
 
-const METRIC_VALUES: MetricKey[] = ["total", "completed", "active", "nextMeeting"];
 
-export const DEFAULT_METRICS_ORDER: MetricKey[] = [...METRIC_VALUES];
 
 export function normalizePriorityKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -264,44 +259,15 @@ export function extractDateRange(prop: NotionPropertyValue | undefined): { start
   return result;
 }
 
-export function sanitizeMetricsOrder(input: unknown): MetricKey[] {
-  const candidateArray: unknown[] = Array.isArray(input)
-    ? input
-    : typeof input === "string"
-      ? input
-          .split(',')
-          .map(piece => piece.trim())
-          .filter(piece => piece.length > 0)
-      : [];
-
-  const seen = new Set<MetricKey>();
-  for (const candidate of candidateArray) {
-    if (typeof candidate !== "string") continue;
-    const normalized = candidate.trim();
-    const metric = METRIC_VALUES.find(value => value.toLowerCase() === normalized.toLowerCase());
-    if (metric && !seen.has(metric)) {
-      seen.add(metric);
-    }
-  }
-
-  if (seen.size === 0) {
-    return [...DEFAULT_METRICS_ORDER];
-  }
-
-  return Array.from(seen);
-}
-
 export function buildTaskSummary(
   tasks: NotionTask[],
   doneValue: string,
   meetingPriority: string,
-  metricsOrder: MetricKey[],
 ): TaskSummary {
   return buildTaskSummaryWithSorter(
     tasks,
     doneValue,
     meetingPriority,
-    metricsOrder,
     sortTasks // Use legacy sorting for backwards compatibility
   );
 }
@@ -310,7 +276,6 @@ export function buildTaskSummaryWithSorter(
   tasks: NotionTask[],
   doneValue: string,
   meetingPriority: string,
-  metricsOrder: MetricKey[],
   taskSorter: (tasks: NotionTask[]) => NotionTask[],
 ): TaskSummary {
   const activeTasks: NotionTask[] = [];
@@ -360,7 +325,6 @@ export function buildTaskSummaryWithSorter(
     completedTasks: taskSorter(completedTasks),
     nextMeeting,
     meetingPriority,
-    metricsOrder: [...metricsOrder],
     generatedAt: Date.now(),
   };
 }

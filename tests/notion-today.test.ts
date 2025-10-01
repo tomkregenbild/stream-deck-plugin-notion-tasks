@@ -2,13 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_MEETING_PRIORITY,
-  DEFAULT_METRICS_ORDER,
   buildTaskSummary,
   compareDateStrings,
   extractDateValue,
   extractPropertyText,
   prioritySortIndex,
-  sanitizeMetricsOrder,
   sortTasks,
 } from "../src/notion/task-helpers";
 
@@ -121,7 +119,7 @@ describe("buildTaskSummary", () => {
       },
     ] as any;
 
-    const summary = buildTaskSummary(tasks, "Done", DEFAULT_MEETING_PRIORITY, DEFAULT_METRICS_ORDER);
+    const summary = buildTaskSummary(tasks, "Done", DEFAULT_MEETING_PRIORITY);
 
     expect(summary.total).toBe(4);
     expect(summary.completed).toBe(1);
@@ -148,10 +146,10 @@ describe("buildTaskSummary", () => {
       },
     ] as any;
 
-    const summary = buildTaskSummary(tasks, "Done", "Quick Task", DEFAULT_METRICS_ORDER);
+    const summary = buildTaskSummary(tasks, "Done", "Quick Task");
     expect(summary.nextMeeting?.id).toBe("1");
 
-    const defaultSummary = buildTaskSummary(tasks, "Done", DEFAULT_MEETING_PRIORITY, DEFAULT_METRICS_ORDER);
+    const defaultSummary = buildTaskSummary(tasks, "Done", DEFAULT_MEETING_PRIORITY);
     expect(defaultSummary.nextMeeting?.id).toBe("2");
   });
 
@@ -166,7 +164,7 @@ describe("buildTaskSummary", () => {
       },
     ] as any;
 
-    const summary = buildTaskSummary(tasks, "Done", "Quick Task", DEFAULT_METRICS_ORDER);
+    const summary = buildTaskSummary(tasks, "Done", "Quick Task");
     expect(summary.nextMeeting?.id).toBe("7");
   });
 });
@@ -177,20 +175,5 @@ describe("compareDateStrings", () => {
     expect(compareDateStrings(undefined, "2024-09-01")).toBe(1);
     expect(compareDateStrings("2024-09-01", undefined)).toBe(-1);
     expect(compareDateStrings("2024-09-01", "2024-09-02")).toBeLessThan(0);
-  });
-});
-
-describe("sanitizeMetricsOrder", () => {
-  it("returns defaults when input is empty or invalid", () => {
-    expect(sanitizeMetricsOrder(undefined)).toEqual(DEFAULT_METRICS_ORDER);
-    expect(sanitizeMetricsOrder([123, null])).toEqual(DEFAULT_METRICS_ORDER);
-  });
-
-  it("normalizes strings, removes duplicates, and preserves known keys", () => {
-    const result = sanitizeMetricsOrder(["Active", "total", "nextMeeting", "total"]);
-    expect(result).toEqual(["active", "total", "nextMeeting"]);
-
-    const commaSeparated = sanitizeMetricsOrder("total, unknown, active");
-    expect(commaSeparated).toEqual(["total", "active"]);
   });
 });

@@ -65,9 +65,9 @@ Several settings exist in the code but are not exposed in the user interface:
 
 ### Currently Missing from UI:
 
-| Setting        | Purpose                          | Currently Available In | Status                                    |
-| -------------- | -------------------------------- | ---------------------- | ----------------------------------------- |
-| `metricsOrder` | Control order of metrics display | Code only, no UI       | **Nice to Have** - Advanced customization |
+| Setting        | Purpose                                                              | Currently Available In | Status                                              |
+| -------------- | -------------------------------------------------------------------- | ---------------------- | --------------------------------------------------- |
+| `metricsOrder` | **UNUSED** - Legacy/dead code that was planned but never implemented | Code only, no UI       | **Remove** - Not actually used anywhere for display |
 
 ### Inconsistent UI Coverage:
 
@@ -210,7 +210,7 @@ export type NotionSettings = {
 
   // === NEW: Missing Fields Currently in Code ===
 
-  metricsOrder?: string[]; // Control metrics display order
+  // Note: metricsOrder was removed - it's unused legacy code
 
   // === NEW: Priority System Configuration ===
   priorityValues?: string[]; // User-defined priority values
@@ -439,7 +439,7 @@ function normalizeSettings(settings: NotionSettings): NormalizedSettings {
     customSortProperty: settings.customSortProperty,
     sortOrder: settings.sortOrder || "asc",
 
-    metricsOrder: settings.metricsOrder || DEFAULT_METRICS_ORDER,
+    // Note: metricsOrder removed - it's unused legacy code
   };
 }
 ```
@@ -723,6 +723,9 @@ Common issues and solutions:
 ### 🔹 **Low (Future Enhancement)**
 
 7. **Advanced sorting options** - Power user features
-8. **Metrics display configuration** - Layout customization
+
+### 🗑️ **Remove (Dead Code)**
+
+8. **metricsOrder configuration** - Legacy code that was never implemented for actual display purposes
 
 This analysis provides a complete roadmap for making the Notion Tasks StreamDeck plugin generic and configurable for any user's database schema, with the priority system being the most critical issue to address first.
