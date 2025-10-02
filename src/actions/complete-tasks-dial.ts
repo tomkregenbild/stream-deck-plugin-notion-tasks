@@ -40,9 +40,14 @@ interface ContextState {
 
 const logger = streamDeck.logger.createScope("CompleteTasksDialAction");
 
-// Cache for date-filtered summaries to avoid repeated API calls
-const dateFilterCache = new Map<string, { summary: TaskSummary; timestamp: number }>();
-const CACHE_DURATION = 60 * 1000; // 1 minute cache
+// Persistent cache for date-filtered summaries to avoid repeated API calls during dial rotations
+const dateFilterCache = new Map<string, { 
+  summary: TaskSummary; 
+  timestamp: number; 
+  pendingRefresh?: Promise<TaskSummary | undefined>;
+}>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minute cache - longer duration for better performance
+const REFRESH_THRESHOLD = 30 * 1000; // Refresh if older than 30 seconds but still serve cached data
 
 // Helper function to get filtered task summary based on date filter setting
 async function getFilteredTaskSummaryAsync(settings: NotionSettings): Promise<TaskSummary | undefined> {
@@ -62,46 +67,114 @@ async function getFilteredTaskSummaryAsync(settings: NotionSettings): Promise<Ta
   const cached = dateFilterCache.get(cacheKey);
   const now = Date.now();
   
+  // If we have fresh cached data, return it immediately
   if (cached && (now - cached.timestamp) < CACHE_DURATION) {
     logger.debug("getFilteredTaskSummaryAsync cache hit", {
       dateFilter,
-      cacheAge: now - cached.timestamp
+      cacheAge: now - cached.timestamp,
+      isStale: (now - cached.timestamp) > REFRESH_THRESHOLD
     });
+    
+    // If data is getting stale but still valid, trigger background refresh
+    if ((now - cached.timestamp) > REFRESH_THRESHOLD && !cached.pendingRefresh) {
+      logger.debug("getFilteredTaskSummaryAsync triggering background refresh", { dateFilter });
+      cached.pendingRefresh = refreshDateFilterCache(settings, cacheKey);
+    }
+    
     return cached.summary;
   }
   
-  // For other filters, fetch fresh data with the specific date filter
-  try {
-    logger.debug("getFilteredTaskSummaryAsync fetching from API", {
-      dateFilter
-    });
-    
-    const summary = await getNotionTasksWithDateFilter(settings);
-    
-    // Cache the result
-    if (summary) {
-      dateFilterCache.set(cacheKey, { summary, timestamp: now });
-      logger.debug("getFilteredTaskSummaryAsync cached result", {
+  // No valid cache, need to fetch immediately
+  return await refreshDateFilterCache(settings, cacheKey);
+}
+
+// Separate function to handle cache refresh
+async function refreshDateFilterCache(settings: NotionSettings, cacheKey: string): Promise<TaskSummary | undefined> {
+  const dateFilter = settings.dateFilter || "today";
+  const cached = dateFilterCache.get(cacheKey);
+  
+  // If there's already a refresh in progress, wait for it
+  if (cached?.pendingRefresh) {
+    logger.debug("refreshDateFilterCache waiting for existing refresh", { dateFilter });
+    return await cached.pendingRefresh;
+  }
+  
+  // Start a new refresh
+  const refreshPromise = (async (): Promise<TaskSummary | undefined> => {
+    try {
+      logger.debug("refreshDateFilterCache fetching from API", { dateFilter });
+      
+      const summary = await getNotionTasksWithDateFilter(settings);
+      const now = Date.now();
+      
+      // Update cache with new data
+      if (summary) {
+        dateFilterCache.set(cacheKey, { 
+          summary, 
+          timestamp: now,
+          // Don't carry over the pendingRefresh promise
+        });
+        logger.debug("refreshDateFilterCache cached fresh result", {
+          dateFilter,
+          active: summary.active,
+          total: summary.total
+        });
+      }
+      
+      return summary;
+    } catch (error) {
+      logger.error("refreshDateFilterCache error", {
         dateFilter,
-        active: summary.active,
-        total: summary.total
+        error: error instanceof Error ? error.message : String(error)
       });
+      
+      // Clear the pending refresh on error
+      const currentCached = dateFilterCache.get(cacheKey);
+      if (currentCached) {
+        delete currentCached.pendingRefresh;
+      }
+      
+      return undefined;
     }
-    
-    return summary;
-  } catch (error) {
-    logger.error("getFilteredTaskSummaryAsync error", {
-      dateFilter,
-      error: error instanceof Error ? error.message : String(error)
+  })();
+  
+  // Store the pending refresh
+  const currentCached = dateFilterCache.get(cacheKey);
+  if (currentCached) {
+    currentCached.pendingRefresh = refreshPromise;
+  } else {
+    dateFilterCache.set(cacheKey, {
+      summary: { active: 0, total: 0, completed: 0, activeTasks: [], completedTasks: [], meetingPriority: "", generatedAt: Date.now() },
+      timestamp: 0, // Will be updated when refresh completes
+      pendingRefresh: refreshPromise
     });
-    return undefined;
+  }
+  
+  return await refreshPromise;
+}
+
+// Function to clear cache when data is refreshed - now more selective
+function clearDateFilterCache(specificKey?: string): void {
+  if (specificKey) {
+    // Only clear specific cache entry
+    if (dateFilterCache.delete(specificKey)) {
+      logger.debug("Date filter cache cleared for specific key", { key: specificKey });
+    }
+  } else {
+    // Clear all cache entries
+    dateFilterCache.clear();
+    logger.debug("Date filter cache completely cleared");
   }
 }
 
-// Function to clear cache when data is refreshed
-function clearDateFilterCache(): void {
-  dateFilterCache.clear();
-  logger.debug("Date filter cache cleared");
+// Function to invalidate cache but keep serving stale data during refresh
+function invalidateCache(cacheKey: string): void {
+  const cached = dateFilterCache.get(cacheKey);
+  if (cached) {
+    // Mark as stale by setting timestamp to 0, but keep the summary for immediate serving
+    cached.timestamp = 0;
+    logger.debug("Date filter cache invalidated", { key: cacheKey });
+  }
 }
 
 const INITIAL_FEEDBACK = {
@@ -147,11 +220,16 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
       const currentState = this.contexts.get(state.id);
       if (!currentState) return;
       
-      // Clear cache when new data comes in
-      clearDateFilterCache();
-      
       // Get current settings for filtering
       currentState.action.getSettings().then(async currentSettings => {
+        // Only invalidate cache for non-today filters when new "today" data comes in
+        // This allows Tomorrow/Next Week to stay cached longer for better performance
+        const dateFilter = currentSettings.dateFilter || "today";
+        if (dateFilter !== "today") {
+          const cacheKey = `${currentSettings.db}-${currentSettings.token}-${dateFilter}`;
+          invalidateCache(cacheKey);
+        }
+        
         const filteredSummary = await getFilteredTaskSummaryAsync(currentSettings);
         if (!filteredSummary) return;
         
@@ -186,7 +264,16 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
     }
 
     const settings = ev.payload.settings ?? {};
+    const startTime = Date.now();
     const summary = await getFilteredTaskSummaryAsync(settings);
+    const fetchTime = Date.now() - startTime;
+    
+    logger.debug("onDialRotate:dataFetch", { 
+      context: state.id, 
+      dateFilter: settings.dateFilter || "today",
+      fetchTime: `${fetchTime}ms`,
+      hasSummary: !!summary
+    });
     // Show all tasks (both active and completed)
     const allTasks = [...(summary?.activeTasks || []), ...(summary?.completedTasks || [])];
     if (!summary || allTasks.length === 0) {
@@ -311,8 +398,12 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
 
       await this.updateTaskStatus(currentTask.id, settings, targetStatus);
       
-      // Clear cache since task status changed
-      clearDateFilterCache();
+      // Invalidate cache for current date filter since task status changed
+      const dateFilter = settings.dateFilter || "today";
+      if (dateFilter !== "today") {
+        const cacheKey = `${settings.db}-${settings.token}-${dateFilter}`;
+        invalidateCache(cacheKey);
+      }
       
       // Stay in detail view and immediately update the display
       // Store the new status in the state for immediate feedback
@@ -367,7 +458,15 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
         
         // Refresh all plugin data before updating the display
         logger.debug("onDialDown:refreshingData", { context: state.id });
-        clearDateFilterCache(); // Clear cache before refresh
+        
+        // Only clear cache for the current date filter when doing a manual refresh
+        const refreshSettings = await state.action.getSettings();
+        const dateFilter = refreshSettings.dateFilter || "today";
+        if (dateFilter !== "today") {
+          const cacheKey = `${refreshSettings.db}-${refreshSettings.token}-${dateFilter}`;
+          clearDateFilterCache(cacheKey);
+        }
+        
         await refreshNotionData(true);
         
         const currentSettings = await state.action.getSettings();
