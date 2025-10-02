@@ -32,6 +32,7 @@ import {
   type PrioritySystemType,
   type PrioritySystemConfig,
 } from "../notion/task-helpers";
+import { globalSettingsManager } from "../notion/global-settings";
 
 const TITLE_MAX_LINES = 3;
 const TITLE_MAX_CHARS = 14;
@@ -290,11 +291,19 @@ class TaskCoordinator {
     if (needsPersist) {
       logIfRejected(action.setSettings(persistedSettings));
     }
+    
+    // Register with global settings manager
+    globalSettingsManager.registerContext(action.id);
+    globalSettingsManager.updateFromSettings(action.id, settings);
+    
     await this.paint(state);
     await this.refresh();
   }
 
   detach(id: string): void {
+    // Unregister from global settings manager
+    globalSettingsManager.unregisterContext(id);
+    
     this.contexts.delete(id);
     this.refresh().catch(error => {
       streamDeck.logger.error("Failed to refresh after detach", error);
@@ -310,6 +319,10 @@ class TaskCoordinator {
     if (needsPersist) {
       logIfRejected(state.action.setSettings(persistedSettings));
     }
+    
+    // Update global settings
+    globalSettingsManager.updateFromSettings(id, settings);
+    
     await this.refresh(true);
   }
 

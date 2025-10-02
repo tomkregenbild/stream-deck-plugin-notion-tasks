@@ -22,6 +22,7 @@ import {
   refreshNotionData,
   type NotionSettings,
 } from "./notion-today";
+import { globalSettingsManager } from "../notion/global-settings";
 
 const SUMMARY_LAYOUT_PATH = "layouts/complete-summary.touch-layout.json";
 const DETAIL_LAYOUT_PATH = "layouts/complete-detail.touch-layout.json";
@@ -200,6 +201,9 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
 
     logger.debug("onWillAppear", { context: state.id });
 
+    // Register with global settings manager
+    globalSettingsManager.registerContext(state.id);
+
     await this.ensureLayout(state);
     await action.setTitle("Tasks");
     await action.setFeedback({ ...INITIAL_FEEDBACK });
@@ -209,6 +213,9 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
     state.currentTaskIndex = 0;
 
     const settings = ev.payload.settings ?? {};
+    
+    // Update global settings from current settings
+    globalSettingsManager.updateFromSettings(state.id, settings);
     const summary = await getFilteredTaskSummaryAsync(settings);
     if (summary) {
       await this.updateFeedback(state, summary, settings);
@@ -253,6 +260,10 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
 
     logger.debug("onWillDisappear", { context: state.id });
     state.unsubscribe?.();
+    
+    // Unregister from global settings manager
+    globalSettingsManager.unregisterContext(state.id);
+    
     this.contexts.delete(state.id);
   }
 
@@ -582,6 +593,9 @@ export class CompleteTasksDialAction extends SingletonAction<NotionSettings> {
       hasDb: !!settings.db,
       hasProperties: !!settings._dbProperties
     });
+
+    // Update global settings when any settings change
+    globalSettingsManager.updateFromSettings(action.id, settings);
     
     // Check if this is a property fetch trigger
     if (settings._triggerPropertyFetch && settings.token && settings.db) {
