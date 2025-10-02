@@ -32,12 +32,15 @@ const habitDataSource = createHabitDataSource(async () => {
 });
 autoRefreshManager.registerDataSource(habitDataSource);
 
-// Configure auto-refresh settings (backend process)
+// Configure auto-refresh settings (backend process) - temporarily faster for testing
 autoRefreshManager.updateSettings({
   enabled: true,
-  intervalMinutes: 1, // Check every 1 minute
-  detectChangesOnly: true, // Only refresh when changes are detected
+  intervalMinutes: 0.5, // Check every 30 seconds for testing
+  detectChangesOnly: false,
 });
+
+// Log auto-refresh status for debugging
+streamDeck.logger.info("Auto-refresh configured for testing", autoRefreshManager.getStatus());
 
 // Finally, connect to the Stream Deck.
 streamDeck.connect();

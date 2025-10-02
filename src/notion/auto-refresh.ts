@@ -67,7 +67,7 @@ class AutoRefreshManager {
     this.stop(); // Clear any existing interval
     
     const intervalMs = this.settings.intervalMinutes * 60 * 1000;
-    logger.debug("Starting auto-refresh", { 
+    logger.info("Starting auto-refresh", { 
       intervalMinutes: this.settings.intervalMinutes,
       dataSourceCount: this.dataSources.size,
       detectChangesOnly: this.settings.detectChangesOnly
@@ -174,11 +174,12 @@ class AutoRefreshManager {
       }
 
       if (refreshPromises.length > 0) {
-        logger.debug("Refreshing data sources", { 
+        logger.info("Auto-refresh: Refreshing data sources", { 
           count: refreshPromises.length,
           changesDetected 
         });
         await Promise.allSettled(refreshPromises);
+        logger.info("Auto-refresh: Data sources refreshed successfully");
       } else if (this.settings.detectChangesOnly) {
         logger.debug("No changes detected, skipping refresh");
       }

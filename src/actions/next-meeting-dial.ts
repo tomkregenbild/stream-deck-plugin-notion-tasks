@@ -17,6 +17,7 @@ import {
   subscribeToNotionSummary,
   type NotionSettings,
 } from "./notion-today";
+import { globalSettingsManager } from "../notion/global-settings";
 
 const LAYOUT_PATH = "layouts/next-meeting.touch-layout.json";
 
@@ -55,6 +56,12 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
 
     logger.debug("onWillAppear", { context: state.id });
 
+    // Register with global settings manager
+    globalSettingsManager.registerContext(state.id);
+    
+    const settings = ev.payload.settings ?? {};
+    globalSettingsManager.updateFromSettings(state.id, settings);
+
     await this.ensureLayout(state);
     await action.setTitle("Next Meeting");
     await action.setFeedback({ ...INITIAL_FEEDBACK });
@@ -80,6 +87,10 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
 
     logger.debug("onWillDisappear", { context: state.id });
     state.unsubscribe?.();
+    
+    // Unregister from global settings manager
+    globalSettingsManager.unregisterContext(state.id);
+    
     this.contexts.delete(state.id);
   }
 
@@ -135,6 +146,9 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
       hasDb: !!settings.db,
       hasProperties: !!settings._dbProperties
     });
+
+    // Update global settings when any settings change
+    globalSettingsManager.updateFromSettings(action.id, settings);
     
     // Check if this is a property fetch trigger
     if (settings._triggerPropertyFetch && settings.token && settings.db) {
@@ -187,6 +201,13 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
   }
 
   private async updateFeedback(state: ContextState, summary: any): Promise<void> {
+    logger.debug("updateFeedback called", { 
+      context: state.id, 
+      hasSummary: !!summary,
+      hasActiveTasks: !!summary?.activeTasks,
+      activeTaskCount: summary?.activeTasks?.length || 0
+    });
+    
     const settings = await state.action.getSettings();
     const todaysMeetings = this.getTodaysMeetings(summary, settings);
     
@@ -251,9 +272,19 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
   }
 
   private getTodaysMeetings(summary: any, settings: NotionSettings): NotionTask[] {
-    if (!summary || !summary.activeTasks) return [];
+    if (!summary || !summary.activeTasks) {
+      logger.debug("getTodaysMeetings: No summary or active tasks", { 
+        hasSummary: !!summary, 
+        hasActiveTasks: !!summary?.activeTasks 
+      });
+      return [];
+    }
     
     const meetingPriorityValue = settings.meetingPriority || "Meeting";
+    logger.debug("getTodaysMeetings: Filtering meetings", { 
+      totalActiveTasks: summary.activeTasks.length,
+      meetingPriorityValue 
+    });
     
     // Filter tasks that are meetings with time specified and are today or future
     const now = new Date();
@@ -263,18 +294,43 @@ export class NextMeetingDialAction extends SingletonAction<NotionSettings> {
     const meetings = summary.activeTasks.filter((task: NotionTask) => {
       // Check if task has the meeting priority value
       if (!task.priority || task.priority !== meetingPriorityValue) {
+        logger.debug("getTodaysMeetings: Task filtered out - priority mismatch", { 
+          taskId: task.id,
+          title: task.title,
+          priority: task.priority,
+          expectedPriority: meetingPriorityValue 
+        });
         return false;
       }
       
       // Check if task has a due date/time (use startTime if available, fallback to due)
       const meetingStart = task.startTime || task.due;
       if (!meetingStart) {
+        logger.debug("getTodaysMeetings: Task filtered out - no start time or due date", { 
+          taskId: task.id,
+          title: task.title,
+          startTime: task.startTime,
+          due: task.due 
+        });
         return false;
       }
       
       // Check if the meeting is today or in the future
       const meetingTime = new Date(meetingStart);
-      return meetingTime >= startOfToday;
+      const isFuture = meetingTime >= startOfToday;
+      logger.debug("getTodaysMeetings: Task meeting time check", { 
+        taskId: task.id,
+        title: task.title,
+        meetingTime: meetingTime.toISOString(),
+        startOfToday: startOfToday.toISOString(),
+        isFuture 
+      });
+      return isFuture;
+    });
+    
+    logger.debug("getTodaysMeetings: Found meetings", { 
+      count: meetings.length,
+      meetings: meetings.map((m: NotionTask) => ({ id: m.id, title: m.title, priority: m.priority, due: m.due, startTime: m.startTime }))
     });
     
     // Sort by due date (earliest first)
